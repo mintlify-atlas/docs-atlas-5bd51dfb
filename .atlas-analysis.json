@@ -1,0 +1,102 @@
+{
+  "projectType": "saas",
+  "projectName": "Ubik",
+  "projectDescription": "Ubik is a Progressive Web App (PWA) for the tourism hospitality sector that enables motel owners to manage their properties and rooms while allowing customers to explore, book, and pay for rooms online.",
+  "theme": "almond",
+  "primaryColor": "#e30d0d",
+  "lightColor": "#b81d1d",
+  "darkColor": null,
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "quickstart"]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/explore-motels",
+              "features/reservations",
+              "features/payments",
+              "features/maps-geolocation"
+            ]
+          },
+          {
+            "group": "User Roles",
+            "pages": [
+              "roles/overview",
+              "roles/customer",
+              "roles/motel-owner",
+              "roles/admin"
+            ]
+          },
+          {
+            "group": "Motel Management",
+            "pages": [
+              "motel-management/register-motel",
+              "motel-management/manage-rooms",
+              "motel-management/offers-promotions",
+              "motel-management/dashboard"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Developer Guide",
+        "groups": [
+          {
+            "group": "Setup",
+            "pages": [
+              "developer/architecture",
+              "developer/installation",
+              "developer/environment-config"
+            ]
+          },
+          {
+            "group": "Components",
+            "pages": [
+              "developer/components/overview",
+              "developer/components/cards",
+              "developer/components/map",
+              "developer/components/payment-modal"
+            ]
+          },
+          {
+            "group": "Services & Data",
+            "pages": [
+              "developer/services/auth",
+              "developer/services/motel",
+              "developer/services/room",
+              "developer/services/payment"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Multi-role authentication (Admin, Motel Owner, Customer)",
+    "Interactive map-based motel exploration with geolocation",
+    "Online room booking and reservation management",
+    "Stripe-integrated payment processing",
+    "Motel and room management dashboard for owners",
+    "Cloudinary-powered image uploads for motel/room galleries",
+    "Mobile-first Progressive Web App (PWA) design",
+    "Real-time room availability and filtering"
+  ],
+  "publicApiSurface": [
+    "GET /api/motels — List and search motels",
+    "GET /api/motels/:id — Get motel details with rooms",
+    "POST /api/reservations — Create a reservation",
+    "GET /api/payments/config — Get Stripe publishable key",
+    "POST /api/payments/create-intent — Create Stripe payment intent",
+    "POST /auth/login — Authenticate user and get token",
+    "POST /auth/register — Register a new user",
+    "GET /auth/me — Get current authenticated user",
+    "GET /api/rooms — List available rooms",
+    "POST /api/motels — Create a new motel (owner)"
+  ]
+}
