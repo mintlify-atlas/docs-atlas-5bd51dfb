@@ -1,0 +1,164 @@
+---
+title: "Exploring Motels"
+description: "Browse and filter motels and rooms available on the Ubik platform."
+---
+
+The explore view is the main discovery interface in Ubik. When you open `/explore`, the app fetches all public motels and rooms in parallel, combines them into a unified card list, and renders a Leaflet map alongside the results.
+
+## How the explore view works
+
+On initialization, `Explore` calls three endpoints simultaneously using `forkJoin`:
+
+- `GET /api/rooms` — all available rooms
+- `GET /api/motels` — all public motels (no authentication required)
+- `GET /api/services` — service catalog used by the filter modal
+
+Each room and each motel is mapped to a `Card3Informacion` object with a `type` field (`'room'` or `'motel'`). Both lists are merged into `allCards`. Filters and text search are applied client-side on top of this merged list.
+
+If a search state was set from the global header (`SearchService`), it is merged into the active filters before the first render and then cleared.
+
+<Info>
+  The `GET /api/motels` endpoint is public and requires no authentication token. Any visitor can browse motels without logging in.
+</Info>
+
+## Filter modal
+
+Clicking the **Filtro** button opens the `FilterModal` component (Angular CDK Dialog). The modal receives the current filter state and returns an updated `Filters` object when you click **Aplicar filtros**.
+
+The `Filters` interface defines every option available:
+
+```typescript
+export interface Filters {
+  priceMin: number | null;
+  priceMax: number | null;
+  roomTypes: string[];       // e.g. ['Suite', 'Doble']
+  cities: string[];          // municipality names
+  department: string[] | null;
+  onlyAvailable: boolean;    // hides unavailable rooms when true
+  serviceIds: number[];      // filter by included service IDs
+  sortBy: 'priceAsc' | 'priceDesc' | null;
+  showType: 'rooms' | 'motels' | 'all';
+}
+```
+
+The modal sections are:
+
+<CardGroup cols={2}>
+  <Card title="Show type" icon="filter">
+    Toggle between **Todo**, **Habitaciones**, and **Moteles** to narrow results by entity type.
+  </Card>
+  <Card title="Availability" icon="circle-check">
+    Toggle **Solo disponibles** to hide rooms with `isAvailable: false`. Motel cards are always shown regardless of this toggle.
+  </Card>
+  <Card title="Price range" icon="dollar-sign">
+    Enter a minimum and maximum COP price. Applied only to room cards — motel cards have no price.
+  </Card>
+  <Card title="Room type" icon="bed">
+    Select one or more room types (e.g. Suite, Doble). Populated from the distinct `roomType` values in the loaded rooms.
+  </Card>
+  <Card title="Services" icon="star">
+    Filter rooms that include all selected service IDs (logical AND). Services are loaded from `GET /api/services`.
+  </Card>
+  <Card title="Location" icon="map-pin">
+    Select a Colombian department first, then narrow to a specific municipality. Data comes from a local JSON via `ColombiaService` — no external network call.
+  </Card>
+  <Card title="Sort" icon="arrow-up-down">
+    Sort results by price ascending or descending. Applies to the final filtered list.
+  </Card>
+  <Card title="Reset" icon="rotate-ccw">
+    Clicking **Reiniciar** restores all filters to their defaults (`onlyAvailable: true`, all others empty).
+  </Card>
+</CardGroup>
+
+<Note>
+  Location filtering uses accent-insensitive, punctuation-stripped string matching. "Bogotá D.C." and "bogota dc" match the same results.
+</Note>
+
+## Motel cards
+
+Each card in the results list is rendered by the `app-card-3` component. The data displayed comes from the `Motel` and `Room` models:
+
+### Room card fields
+
+| Field | Source | Description |
+|---|---|---|
+| Motel name | `Room.motelName` | Name of the parent motel |
+| Room number | `Room.number` | Room identifier |
+| Room type | `Room.roomType` | Category label (e.g. Suite) |
+| Description | `Room.description` | Short text description |
+| Cover image | `Room.imageUrls[0]` | First image URL, fallback to logo |
+| City | `Room.motelCity` | City where the motel is located |
+| Address | `Room.motelAddress` | Street address |
+| Price | `Room.price` | Nightly rate in COP |
+| Availability | `Room.isAvailable` | Whether the room can be booked |
+
+### Motel card fields
+
+| Field | Source | Description |
+|---|---|---|
+| Name | `Motel.name` | Motel display name |
+| Description | `Motel.description` | Optional summary |
+| Cover image | `Motel.imageUrls` (role `COVER`) | Falls back to first image in array |
+| City | `Motel.city` | City |
+| Address | `Motel.address` | Street address |
+
+The `Motel` model also carries coordinates used by the map:
+
+```typescript
+export interface Motel {
+  id: number;
+  name: string;
+  address: string;
+  phoneNumber: string;
+  description: string | null;
+  city: string;
+  propertyId: number;
+  dateCreated: string;
+  imageUrls: MotelImage[];
+  latitude: number | null;
+  longitude: number | null;
+  approvalStatus: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED';
+  approvalDate: string | null;
+  approvedByUserId: number | null;
+  rejectionReason: string | null;
+  rues: string | null;
+  rnt: string | null;
+  ownerDocumentType: string;
+  ownerDocumentNumber: string;
+  ownerFullName: string;
+  legalRepresentativeName: string;
+  legalDocumentUrl: string | null;
+  hasCompleteLegalInfo: boolean;
+  rooms?: Room[];
+}
+```
+
+## Navigating to a motel profile
+
+Clicking on a motel card (or the **Ver más info** button in the mobile map modal) navigates to:
+
+```
+/motelProfile/:id
+```
+
+For room cards, the link uses the room's `motelId` field to reach the same route:
+
+```html
+[routerLink]="['/motelProfile', card.motelId]"
+```
+
+From the motel profile you can view all rooms for that property, see the image gallery, and open the booking calendar.
+
+## API endpoint
+
+```
+GET /api/motels
+```
+
+Returns an array of `Motel` objects. No authentication required. Called via `MotelService.getAllMotels()`.
+
+```typescript
+getAllMotels(): Observable<Motel[]> {
+  return this.http.get<Motel[]>(`${this.apiUrl}/motels`);
+}
+```

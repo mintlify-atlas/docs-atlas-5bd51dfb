@@ -1,0 +1,182 @@
+---
+title: "Managing rooms"
+description: "How to add rooms to your motel, configure room types, upload images via Cloudinary, select services and amenities, and manage availability."
+---
+
+## Overview
+
+Each motel can have multiple rooms. You add rooms one at a time from your property list. A room requires a number/code, a type, a price, a description, at least one image, and at least one service. Rooms are created at the route `/create-room` and listed at `/rooms-motel`.
+
+## Room model
+
+The `Room` interface describes the shape of a room as returned by the API:
+
+```typescript
+export interface Room {
+  id: number;
+  motelId: number;
+  motelName: string;
+  motelCity: string;
+  motelAddress: string;
+  motelPhoneNumber: string;
+  number: string;        // room identifier, e.g. "A-101"
+  roomType: string;      // 'STANDARD' | 'SUITE' | 'DELUXE' | 'VIP'
+  price: number;         // price per night / per hour in local currency
+  description: string;
+  imageUrls: string[];   // Cloudinary secure URLs
+  serviceIds: number[];  // IDs of associated services
+  latitude: number;
+  longitude: number;
+  isAvailable: boolean;
+}
+```
+
+## Room types
+
+Four room types are supported:
+
+<CardGroup cols={2}>
+  <Card title="STANDARD" icon="bed">
+    A standard room with basic amenities.
+  </Card>
+  <Card title="SUITE" icon="star">
+    A suite offering additional space and comfort.
+  </Card>
+  <Card title="DELUXE" icon="gem">
+    A deluxe room with upgraded furnishings and extras.
+  </Card>
+  <Card title="VIP" icon="crown">
+    The top tier: VIP rooms with premium amenities.
+  </Card>
+</CardGroup>
+
+## Adding a room
+
+<Steps>
+  <Step title="Open your property list">
+    Navigate to `/listProperty`. Each motel card has a **Crear Habitación** button. Click it for the motel you want to add a room to.
+
+    The app navigates to `/create-room?motelId=<id>`, passing the motel ID as a query parameter. The `CreateRoomComponent` reads this parameter on `ngOnInit` and stores it as `motelId`.
+  </Step>
+
+  <Step title="Fill in the basic room details">
+    Complete the **Datos básicos** section:
+
+    | Field | Required | Notes |
+    |---|---|---|
+    | **Number / Code** | Yes | Unique identifier for the room, e.g. `A-101` |
+    | **Room type** | Yes | One of: `STANDARD`, `SUITE`, `DELUXE`, `VIP` |
+    | **Price** | Yes | Must be greater than 0 |
+    | **Description** | Yes | Describe the room and what makes it special |
+  </Step>
+
+  <Step title="Upload room images">
+    In the **Imágenes** section, select one or more image files. At least one image is required.
+
+    Accepted formats: `image/jpeg`, `image/jpg`, `image/png`, `image/webp`. Maximum size per file: **5 MB**.
+
+    As you select files, the component generates preview thumbnails using `URL.createObjectURL`. Files that exceed 5 MB or have an unsupported type are rejected and listed in an error message. You can remove individual images using the **Quitar** button on each preview tile.
+
+    Images are uploaded to Cloudinary under a folder path derived from the motel ID and room number:
+
+    ```typescript
+    private buildFolderSuffix(roomNumber: string): string {
+      const safeRoom = (roomNumber ?? '')
+        .trim()
+        .replace(/\s+/g, '_')
+        .replace(/[^a-zA-Z0-9_-]/g, '');
+
+      return `motel_${this.motelId}/room_${safeRoom || 'room'}`;
+    }
+    // Result: Ubik/motel_42/room_A-101/<timestamp>_<rand>_<filename>
+    ```
+  </Step>
+
+  <Step title="Select services and amenities">
+    In the **Servicios** section, the component loads available services from `GET /api/services`. Each service card shows:
+
+    - **Icon** — a Material Icons name string
+    - **Name** — the service display name
+    - **Description** — a short explanation
+
+    Select at least one service. Selected services are highlighted in red and their IDs are collected into `selectedServiceIds` (a `Set<number>`).
+
+    ```typescript
+    export interface Service {
+      id: number;
+      name: string;
+      description: string;
+      icon: string;
+      created_at: string;
+    }
+    ```
+
+    <Warning>
+      The form will not submit if no services are selected. You must check at least one service.
+    </Warning>
+  </Step>
+
+  <Step title="Submit the form">
+    Click **Crear habitación**. The component:
+
+    1. Validates all form fields and checks that images and services have been selected.
+    2. Uploads all images to Cloudinary using `CloudinaryService.uploadMultiple()`. Failures for individual files are caught silently; only successful URLs are included.
+    3. Sends `RoomCreatePayload` to `POST /api/rooms`.
+    4. On success, redirects to `/listProperty`.
+
+    ```typescript
+    export interface RoomCreatePayload {
+      motelId: number;
+      number: string;
+      roomType: RoomType;      // 'STANDARD' | 'SUITE' | 'DELUXE' | 'VIP'
+      price: number;
+      description: string;
+      imageUrls: string[];     // Cloudinary secure URLs
+      serviceIds: number[];    // IDs from the services list
+    }
+    ```
+  </Step>
+</Steps>
+
+## Viewing rooms for a motel
+
+The `/rooms-motel` route shows **Habitaciones del Motel** — a grid of room cards for a given motel. The view renders a list of `Room` objects (`habitaciones: Room[]`) via the `app-card` component.
+
+The grid also contains an **Agregar habitación** tile (a dashed-border card with a `+` icon) that links back to the room creation flow.
+
+## Room availability
+
+The `isAvailable` field on the `Room` model indicates whether a room can be booked. The `RoomService` exposes an availability check endpoint:
+
+```typescript
+checkAvailability(
+  roomId: number,
+  date: string,       // ISO date, e.g. '2026-03-17'
+  startTime: string,  // e.g. '14:00'
+  endTime: string,    // e.g. '16:00'
+): Observable<AvailabilityResult>
+// GET /api/rooms/:roomId/availability?date=...&startTime=...&endTime=...
+```
+
+You can also subscribe to availability notifications for a specific room:
+
+```typescript
+subscribeAvailability(roomId: number, email: string): Observable<void>
+// POST /api/rooms/:roomId/notify-available
+```
+
+## Services model
+
+Services are globally defined and reused across rooms. The `services.model.ts` interface:
+
+```typescript
+export interface Service {
+  id: number;
+  name: string;
+  description: string;
+  icon: string;
+  created_at: Date;
+}
+```
+
+Services are fetched from `GET /api/services` and are not room-specific — the same catalogue is shared across all motels.

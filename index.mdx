@@ -1,97 +1,84 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Ubik — Motel Booking & Management Platform"
+description: "A Progressive Web App connecting motel owners with guests. Explore nearby motels, book rooms, and manage your properties — all in one platform."
 ---
 
-## Setting up
-
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Create an account and make your first booking in minutes.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Motel Owners" icon="building" href="/roles/motel-owner">
+    Register your property, manage rooms, and view reservations.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Explore Motels" icon="map-pin" href="/features/explore-motels">
+    Find motels near you with interactive maps and availability filters.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Developer Guide" icon="code" href="/developer/architecture">
+    Set up the Angular project locally and understand the codebase.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## What is Ubik?
 
-Everything you need to create world-class documentation.
+Ubik is a hospitality platform built as a Progressive Web App (PWA) using Angular. It bridges two audiences:
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+- **Motel owners** — register establishments, add rooms with photos and amenities, set pricing, and monitor bookings from a centralized dashboard.
+- **Guests** — discover motels by location using an interactive map, filter by availability and room type, and complete secure online reservations with Stripe payments.
 
-## Need inspiration?
+## Key Features
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+<CardGroup cols={2}>
+  <Card title="Interactive Maps" icon="map" href="/features/maps-geolocation">
+    Leaflet-powered maps show motels near the user's current location with real-time geolocation.
+  </Card>
+  <Card title="Online Reservations" icon="calendar-check" href="/features/reservations">
+    Book rooms directly through the platform with check-in and check-out date selection.
+  </Card>
+  <Card title="Stripe Payments" icon="credit-card" href="/features/payments">
+    Secure payment processing powered by Stripe with success and failure handling flows.
+  </Card>
+  <Card title="Multi-role Access" icon="users" href="/roles/overview">
+    Separate experiences for guests, motel owners, and administrators with route guards.
+  </Card>
+  <Card title="Property Management" icon="list-check" href="/motel-management/register-motel">
+    Owners can register multiple properties, upload images via Cloudinary, and manage room inventory.
+  </Card>
+  <Card title="Mobile-First Design" icon="mobile" href="/quickstart">
+    Optimized for mobile devices with a bottom navigation bar and responsive Tailwind CSS layout.
+  </Card>
+</CardGroup>
+
+## User Roles
+
+Ubik supports three distinct user roles, each with tailored access and features:
+
+<CardGroup cols={3}>
+  <Card title="Customer" icon="user" href="/roles/customer">
+    Browse motels, make reservations, and manage bookings.
+  </Card>
+  <Card title="Motel Owner" icon="building" href="/roles/motel-owner">
+    Manage properties, rooms, offers, and view incoming reservations.
+  </Card>
+  <Card title="Admin" icon="shield" href="/roles/admin">
+    Review and approve motel registrations, oversee the platform.
+  </Card>
+</CardGroup>
+
+## Platform Architecture
+
+Ubik is built with a modern Angular stack:
+
+| Technology | Role |
+|---|---|
+| Angular 20+ | Frontend framework with SSR support |
+| TypeScript | Type-safe application code |
+| Tailwind CSS v4 | Utility-first responsive styling |
+| PrimeNG | UI component library |
+| Leaflet | Interactive map rendering |
+| Stripe.js | Client-side payment processing |
+| RxJS | Reactive data streams |
+| Cloudinary | Image upload and CDN delivery |
+
+<Info>
+  Ubik is a SENA Formative Project (2024–2026) developed by a team of four contributors. It connects to a live backend at `https://ubik-back.duckdns.org`.
+</Info>

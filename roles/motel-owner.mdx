@@ -1,0 +1,73 @@
+---
+title: "Motel owner role"
+description: "Motel owners register and manage their properties on Ubik. They have access to a dedicated dashboard for overseeing motels, rooms, and reservations."
+---
+
+The motel owner role (`roleId: 3847261094857362`) is assigned when a user registers through the owner registration flow. Owners can create motels, add rooms, and monitor bookings from their dashboard.
+
+## Registration flow
+
+<Steps>
+  <Step title="Navigate to account selection">
+    Go to `/select-register` and choose the owner registration option.
+  </Step>
+  <Step title="Complete the owner registration form">
+    The owner registration form is at `/register-owner`. This flow collects additional information compared to customer registration, including details needed for legal verification of the property.
+  </Step>
+  <Step title="Log in and access the dashboard">
+    After registration, log in at `/login`. Owners are granted access to `/dashboard/owner`, which is protected by `permissionGuard('view_dashboard')`.
+  </Step>
+</Steps>
+
+## What owners can do
+
+- **Register motels** — Create a new motel listing at `/create-motel`.
+- **Add rooms** — Add rooms to an existing motel at `/create-room`.
+- **List properties** — View all registered properties at `/listProperty`.
+- **View the owner dashboard** — Monitor motel count, today's reservations, and today's revenue at `/dashboard/owner`.
+
+## Key routes
+
+| Route | Guard | Description |
+|-------|-------|-------------|
+| `/dashboard/owner` | `permissionGuard('view_dashboard')` | Owner dashboard with motel and reservation summary |
+| `/create-motel` | — | Register a new motel |
+| `/create-room` | — | Add a room to an existing motel |
+| `/listProperty` | — | List all registered motels |
+
+<Warning>
+The `/dashboard/owner` route requires the `view_dashboard` permission. If a customer or unauthenticated user navigates to this route, `permissionGuard` redirects them to `/home`.
+</Warning>
+
+## Owner dashboard
+
+The owner dashboard at `/dashboard/owner` shows a real-time summary of the owner's portfolio:
+
+- Total motels registered
+- Reservations received today
+- Revenue generated today
+
+From the dashboard, owners can trigger actions to add a new motel or view the current reservation list.
+
+## Permissions
+
+Owners receive the following permissions in `PermissionService`:
+
+```typescript
+// src/app/core/services/permission.service.ts
+3847261094857362: ['view_dashboard', 'create_room', 'view_reports'], // owner
+```
+
+| Permission | Description |
+|------------|-------------|
+| `view_dashboard` | Access the `/dashboard/owner` route |
+| `create_room` | Create rooms within a motel |
+| `view_reports` | View reporting data |
+
+<Info>
+Owners do not have `edit_users` or `delete_room` permissions. Those are reserved for admins.
+</Info>
+
+## Motel approval
+
+When an owner registers a motel, it enters the approval queue with `approvalStatus: 'PENDING'`. The motel is not publicly visible until an admin sets the status to `APPROVED`. See the [Admin role](/roles/admin) page for details on the approval workflow.

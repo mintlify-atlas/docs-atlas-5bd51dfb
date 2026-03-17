@@ -1,0 +1,173 @@
+---
+title: "Payments"
+description: "How Ubik processes payments using Stripe, from creating a payment intent to confirming the transaction."
+---
+
+Ubik uses [Stripe](https://stripe.com) to process payments. The frontend loads Stripe.js dynamically via `@stripe/stripe-js` and renders the Stripe Payment Element inside the `PaymentModal` component. All sensitive card data is handled entirely by Stripe — Ubik's backend only stores the reservation and a payment record.
+
+## Payment flow
+
+<Steps>
+  <Step title="Initialize Stripe">
+    When the `PaymentModal` opens, it calls `PaymentService.getStripeConfig()` to fetch the publishable key from the backend. Stripe is loaded asynchronously:
+
+    ```typescript
+    this.paymentService.getStripeConfig().subscribe({
+      next: async (config) => {
+        this.stripe = await loadStripe(config.publishableKey);
+      }
+    });
+    ```
+
+    This call happens in the background while the user selects their date and time, so Stripe is ready by the time the user reaches the payment step.
+  </Step>
+
+  <Step title="Create a reservation">
+    Before a payment intent can be created, the reservation must exist in the backend. The modal calls `POST /api/reservations` and stores the returned `reservationId`. See [Making Reservations](/features/reservations) for the full reservation flow.
+  </Step>
+
+  <Step title="Create a payment intent">
+    With the `reservationId` and total price in COP, the modal calls `PaymentService.createPaymentIntent()`:
+
+    ```typescript
+    this.paymentService.createPaymentIntent(reservationId, payload.totalPrice).subscribe({
+      next: (intentRes) => {
+        this.clientSecret = intentRes.clientSecret;
+        this.paymentId = intentRes.paymentId;
+        this.mountStripeElements();
+      }
+    });
+    ```
+
+    The backend creates the Stripe PaymentIntent and returns the `clientSecret` needed to mount the Payment Element.
+  </Step>
+
+  <Step title="Mount Stripe Elements">
+    The modal mounts the Stripe Payment Element into a `#payment-element-desktop` or `#payment-element-mobile` container using the `clientSecret`:
+
+    ```typescript
+    this.elements = this.stripe!.elements({
+      clientSecret: this.clientSecret!,
+      appearance: {
+        theme: 'night',
+        variables: {
+          colorPrimary: '#A72027',
+          colorBackground: '#1a1a1f',
+          colorText: '#ffffff',
+        }
+      }
+    });
+    const paymentElement = this.elements.create('payment');
+    paymentElement.mount(`#${container.id}`);
+    ```
+  </Step>
+
+  <Step title="Confirm payment">
+    When the user clicks **Confirmar Pago**, the modal calls `stripe.confirmPayment()`:
+
+    ```typescript
+    const { error } = await this.stripe.confirmPayment({
+      elements: this.elements,
+      confirmParams: {
+        return_url: window.location.origin + '/reservations/success',
+      },
+      redirect: 'if_required'
+    });
+    ```
+
+    If no error is returned, the payment succeeded. The modal closes and navigates to `/payment/success` with the booking details passed via router state.
+  </Step>
+</Steps>
+
+## PaymentService
+
+All payment-related HTTP calls are in `PaymentService`:
+
+```typescript
+export interface StripeConfig {
+  publishableKey: string;
+}
+
+export interface CreatePaymentResponse {
+  paymentId: number;
+  clientSecret: string;
+}
+```
+
+### Methods
+
+**`getStripeConfig()`**
+
+Fetches the Stripe publishable key from the backend. Called once when the modal opens.
+
+```typescript
+getStripeConfig(): Observable<StripeConfig> {
+  return this.http.get<StripeConfig>(`${this.API_URL}/config`);
+}
+```
+
+**`createPaymentIntent(reservationId, amountCop)`**
+
+Creates a Stripe PaymentIntent for the given reservation and amount.
+
+```typescript
+createPaymentIntent(reservationId: number, amountCop: number): Observable<CreatePaymentResponse> {
+  return this.http.post<CreatePaymentResponse>(`${this.API_URL}/create-intent`, {
+    reservationId,
+    amountCop
+  });
+}
+```
+
+## API endpoints
+
+<CardGroup cols={2}>
+  <Card title="GET /api/payments/config" icon="key">
+    Returns the Stripe publishable key. Called once per modal open to initialize `loadStripe()`.
+  </Card>
+  <Card title="POST /api/payments/create-intent" icon="credit-card">
+    Creates a Stripe PaymentIntent. Requires `reservationId` and `amountCop` in the request body. Returns `paymentId` and `clientSecret`.
+  </Card>
+</CardGroup>
+
+## Payment result routes
+
+After a payment attempt, the user is navigated to one of two routes:
+
+| Route | Component | Description |
+|---|---|---|
+| `/payment/success` | `PaymentSuccessComponent` | Shows a booking summary with confirmation code and QR code |
+| `/payment/failure` | `PaymentFailureComponent` | Shows an error message with options to retry or go home |
+
+The success page receives booking details via Angular router state:
+
+```typescript
+this.router.navigate(['/payment/success'], {
+  state: {
+    paymentDetails: {
+      date: string;
+      startTime: string;
+      endTime: string;
+      totalPrice: number;
+      roomName: string;
+      confirmationCode: string;  // e.g. '260310-0001-F8B'
+    }
+  }
+});
+```
+
+The confirmation code is displayed as a QR code and as a human-readable code the guest can show at check-in.
+
+<Warning>
+  If the user navigates directly to `/payment/success` without a router state, the details panel will show empty values. Always arrive at this route through the payment flow.
+</Warning>
+
+## Stripe dependency
+
+Stripe.js is loaded at runtime using the official `@stripe/stripe-js` package:
+
+```typescript
+import { loadStripe, Stripe, StripeElements } from '@stripe/stripe-js';
+```
+
+The library is **not** bundled with the app. It is fetched from Stripe's CDN the first time `loadStripe()` is called. This requires an active internet connection during the payment step.

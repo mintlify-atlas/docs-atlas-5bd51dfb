@@ -1,80 +1,141 @@
 ---
 title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+description: "Get up and running with Ubik — whether you're booking a room as a guest, listing your property as an owner, or setting up the project locally as a developer."
 ---
 
-## Get started in three steps
+<Tabs>
+  <Tab title="As a guest">
+    <Steps>
+      <Step title="Visit the platform">
+        Open Ubik in your browser. The home page loads at `/` and immediately shows you featured motels and a navigation bar.
 
-Get your documentation site running locally and make your first customization.
+        <Tip>Ubik is a PWA. On mobile, you can add it to your home screen for an app-like experience.</Tip>
+      </Step>
+      <Step title="Register as a customer">
+        1. Tap **Sign up** or navigate to `/select-register`.
+        2. Select **Customer** to go to the guest registration form at `/register-user`.
+        3. Fill in your username, email, password, phone number, and date of birth.
+        4. Submit the form. Your account is created with `roleId: 3` (customer).
 
-### Step 1: Set up your local environment
+        <Info>Already have an account? Go to `/login` and enter your username and password.</Info>
+      </Step>
+      <Step title="Explore motels">
+        Navigate to `/explore`. The page shows an interactive Leaflet map centered on your current location alongside a list of available motels.
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+        Use the filter modal to narrow results by location or room type.
+      </Step>
+      <Step title="Pick a room">
+        1. Click a motel card to open its profile at `/motelProfile/:id`.
+        2. Browse available rooms — each card shows the room type, amenities, and pricing.
+        3. Click a room to view its full detail page at `/roominfo`.
+      </Step>
+      <Step title="Make a reservation">
+        On the room detail page, select your check-in and check-out dates and confirm the booking details.
+      </Step>
+      <Step title="Complete payment">
+        Ubik uses Stripe for secure payment processing.
 
-### Step 2: Deploy your changes
+        1. The payment modal opens with your reservation summary.
+        2. Enter your card details in the Stripe-powered form.
+        3. On success, you are redirected to `/payment/success`. If the payment fails, you land on `/payment/failure` and can retry.
+      </Step>
+    </Steps>
+  </Tab>
+  <Tab title="As a motel owner">
+    <Steps>
+      <Step title="Register as an owner">
+        1. Navigate to `/select-register`.
+        2. Select **Owner** to go to the owner registration form at `/register-owner`.
+        3. Complete your account details. Owner accounts receive a different role ID from customer accounts, granting access to owner-specific routes.
+      </Step>
+      <Step title="Create your motel profile">
+        1. After logging in, navigate to `/create-motel`.
+        2. Enter your establishment name, description, address, and location coordinates.
+        3. Upload your motel's cover image — files are sent to Cloudinary (cloud name: `du4tcug9q`, folder: `Ubik`) and the returned URL is saved with your motel record.
+        4. Submit to register your property on the platform.
+      </Step>
+      <Step title="Add rooms with images">
+        1. Go to `/create-room` from your motel's management page.
+        2. Define the room type, capacity, pricing, and list of amenities.
+        3. Upload room photos via the Cloudinary integration.
+        4. Save each room. Repeat for all room types in your establishment.
+      </Step>
+      <Step title="Manage reservations from the dashboard">
+        Navigate to `/dashboard/owner` to view all reservations guests have made at your properties.
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+        <Note>The owner dashboard is protected by `permissionGuard('view_dashboard')`. You must be logged in as an owner to access it.</Note>
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+## Developer setup
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+<Steps>
+  <Step title="Prerequisites">
+    Ensure you have the following installed before proceeding:
 
-### Step 3: Go live
+    - **Node.js** v18 or later
+    - **pnpm** (the project uses `pnpm@10.32.1` as its package manager)
+    - **Angular CLI** — install globally if you don't have it:
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    ```bash
+    npm install -g @angular/cli
+    ```
+  </Step>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/Juankos0714/Ubik-App.git
+    cd Ubik-App
+    ```
+  </Step>
+  <Step title="Install dependencies">
+    <CodeGroup>
 
-## Next steps
+    ```bash pnpm
+    pnpm install
+    ```
 
-Now that you have your docs running, explore these key features:
+    ```bash npm
+    npm install
+    ```
 
-<CardGroup cols={2}>
+    </CodeGroup>
+  </Step>
+  <Step title="Run the development server">
+    <CodeGroup>
 
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
+    ```bash ng
+    ng serve
+    ```
 
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
+    ```bash npm
+    npm start
+    ```
 
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
+    </CodeGroup>
 
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
+    Both commands run `ng serve` as defined in `package.json`.
+  </Step>
+  <Step title="Open the app">
+    Open your browser and navigate to:
 
-</CardGroup>
+    ```
+    http://localhost:4200
+    ```
 
-<Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
-</Note>
+    The app hot-reloads automatically as you edit source files.
+
+    <Tip>The API base URL is configured in `src/environments/environment.ts`. In development it points to `https://ubik-back.duckdns.org/api`.</Tip>
+  </Step>
+</Steps>
+
+## Useful commands
+
+| Command | Description |
+|---|---|
+| `ng serve` | Start the development server at `localhost:4200` |
+| `npm start` | Alias for `ng serve` |
+| `ng build` | Build the application for production |
+| `ng test` | Run unit tests with Karma |
+| `ng build --watch --configuration development` | Rebuild on file changes |

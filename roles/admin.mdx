@@ -1,0 +1,95 @@
+---
+title: "Admin role"
+description: "Admins oversee the Ubik platform. They approve or reject motel registrations, manage users, and have full access to all dashboard features."
+---
+
+The admin role (`roleId: 7392841056473829`) has the broadest set of permissions on the platform. Admins are responsible for approving motel registrations and maintaining platform integrity.
+
+## Dashboard access
+
+Admins access their dashboard at `/dashboard/admin`, which is protected by `permissionGuard('view_dashboard')`:
+
+```typescript
+// src/app/app.routes.ts
+{
+  path: 'dashboard/admin',
+  canActivate: [permissionGuard('view_dashboard')],
+  component: DashboardAdmin,
+}
+```
+
+The admin dashboard displays platform-wide statistics:
+
+- Total registered users
+- Total motels on the platform
+- Total reservations
+- Total platform revenue
+
+From the dashboard, admins can navigate to user management and reporting views.
+
+## Permissions
+
+Admins hold all available permissions:
+
+```typescript
+// src/app/core/services/permission.service.ts
+7392841056473829: ['view_dashboard', 'edit_users', 'create_room', 'delete_room', 'view_reports'], // admin
+```
+
+| Permission | Description |
+|------------|-------------|
+| `view_dashboard` | Access the `/dashboard/admin` route |
+| `edit_users` | Manage user accounts |
+| `create_room` | Create rooms within any motel |
+| `delete_room` | Remove rooms from any motel |
+| `view_reports` | Access platform-wide reports |
+
+## Motel approval workflow
+
+When a motel owner registers a new property, it is assigned an `approvalStatus` of `PENDING`. Admins review the submission and move it through the approval lifecycle.
+
+### Approval statuses
+
+```typescript
+// src/app/core/models/motel.model.ts
+approvalStatus: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED';
+```
+
+| Status | Meaning |
+|--------|---------|
+| `PENDING` | Motel submitted by owner, awaiting admin review |
+| `UNDER_REVIEW` | Admin has started the review process |
+| `APPROVED` | Motel approved and visible to customers |
+| `REJECTED` | Motel rejected; `rejectionReason` contains the explanation |
+
+The `approvalDate` and `approvedByUserId` fields are populated when an admin takes action.
+
+### Legal document verification
+
+Before approving a motel, admins verify the owner's legal documentation. The `Motel` model includes the following fields for this purpose:
+
+```typescript
+// src/app/core/models/motel.model.ts
+export interface Motel {
+  // ...
+  rues: string | null;               // Business registry number (RUES)
+  rnt: string | null;                // National Tourism Registry number (RNT)
+  ownerDocumentType: string;         // Type of owner identity document
+  ownerDocumentNumber: string;       // Owner identity document number
+  ownerFullName: string;             // Full legal name of the owner
+  legalRepresentativeName: string;   // Name of the legal representative
+  legalDocumentUrl: string | null;   // URL to the uploaded legal document
+  hasCompleteLegalInfo: boolean;     // True when all required legal fields are present
+  rejectionReason: string | null;    // Populated when approvalStatus is REJECTED
+  approvalDate: string | null;       // Date the decision was made
+  approvedByUserId: number | null;   // ID of the admin who made the decision
+}
+```
+
+<Warning>
+A motel with `hasCompleteLegalInfo: false` is missing one or more required legal fields. Admins should not approve a motel until this field is `true` and the uploaded document has been verified.
+</Warning>
+
+<Tip>
+The `rues` field corresponds to the Colombian business registry (Registro Único Empresarial y Social) and `rnt` to the National Tourism Registry (Registro Nacional de Turismo). Both are required for legal operation of a motel in Colombia.
+</Tip>

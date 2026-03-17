@@ -1,0 +1,351 @@
+---
+title: 'Auth Service'
+description: 'Authentication, session management, token expiry, and user registration services for the Ubik Angular PWA.'
+---
+
+The auth layer is split across several focused services: `AuthService` owns all reactive session state, `LoginService` handles credential submission, `RegisterService` / `RegisterServiceOwner` handle user registration, `ForgotService` handles password reset, and the `authInterceptor` attaches the Bearer token to every outbound request.
+
+## AuthService
+
+`AuthService` is the single source of truth for session state. It uses Angular signals and computed values to expose reactive, read-only state throughout the app.
+
+### Public signals and computed values
+
+```typescript auth.service.ts
+// Raw writable signals (private)
+private _user  = signal<any | null>(null);
+private _token = signal<string | null>(null);
+private _initialized = signal(false);
+
+// Public read-only computed signals
+user        = computed(() => this._user());            // full user object or null
+token       = computed(() => this._token());           // normalized JWT string or null
+role        = computed(() => this._user()?.roleId ?? null); // numeric role ID
+isLogged    = computed(() => !!this._token());         // true when a token is held
+initialized = computed(() => this._initialized());     // true after restoreSession() completes
+
+// Role shortcuts
+isAdmin = computed(() => this.role() === 7392841056473829);
+isOwner = computed(() => this.role() === 3847261094857362);
+isUser  = computed(() => this.role() === 9182736450192837);
+```
+
+<Info>
+All three role IDs are large numeric literals embedded directly in the source. Guards and `PermissionService` rely on these computed values, never on raw `roleId` comparisons.
+</Info>
+
+### Role IDs
+
+| Role | Numeric ID |
+|------|------------|
+| Admin | `7392841056473829` |
+| Owner | `3847261094857362` |
+| User / Client | `9182736450192837` |
+
+### Token expiry and auto-logout
+
+AuthService enforces a hard expiry on every stored session. The mechanism:
+
+1. On `setToken()`, the JWT `exp` claim is decoded from the token payload. If the token is not a valid JWT (or has no `exp`), a 24-hour TTL is used instead.
+2. The expiry timestamp is persisted to `localStorage` under the key `auth_expires_at`.
+3. `scheduleAutoLogout()` sets a `setTimeout` for the remaining milliseconds so the session is cleared automatically.
+4. On page load (`constructor`) and on `restoreSession()`, the stored timestamp is compared against `Date.now()`. An expired or missing timestamp triggers immediate logout.
+5. Two additional browser event listeners recheck expiry: `visibilitychange` (tab regains focus) and `storage` (cross-tab sync — if another tab clears the token, all tabs log out).
+
+```typescript auth.service.ts
+private readonly DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+private getJwtExpMs(token: string): number | null {
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const payload = JSON.parse(this.base64UrlDecode(parts[1]));
+    const expSec = payload?.exp;
+    if (typeof expSec !== 'number') return null;
+    return expSec * 1000;
+  } catch {
+    return null;
+  }
+}
+
+private scheduleAutoLogout(expiresAtMs: number) {
+  if (this.logoutTimer) clearTimeout(this.logoutTimer);
+  const remaining = expiresAtMs - Date.now();
+  if (remaining <= 0) { this.logout(); return; }
+  this.logoutTimer = setTimeout(() => this.logout(), remaining);
+}
+```
+
+### localStorage keys
+
+| Key | Value |
+|-----|-------|
+| `auth_token` | Normalized JWT (no `Bearer ` prefix, no quotes) |
+| `user` | JSON-serialized user object |
+| `auth_expires_at` | Epoch milliseconds of token expiry |
+
+### Key methods
+
+#### `restoreSession(): Promise<void>`
+
+Call this once at app startup via `APP_INITIALIZER` / `provideAppInitializer`. It:
+
+1. Reads and normalizes the token from `localStorage`.
+2. Validates the stored expiry — logs out immediately if expired.
+3. Sets the token signal and schedules auto-logout.
+4. If no user object is in memory, calls `GET /auth/me` to re-hydrate the user.
+5. Sets `initialized` to `true` in the `finally` block.
+
+```typescript auth.service.ts
+async restoreSession(): Promise<void> {
+  if (!this.isBrowser) {
+    this._initialized.set(true);
+    return;
+  }
+  // ... token validation ...
+  try {
+    const me = await firstValueFrom(
+      this.http.get<any>(`${environment.authUrl}/me`)
+    );
+    this.setUser(me);
+  } catch (err: any) {
+    const status = err?.status;
+    if (status === 401 || status === 403) {
+      this.logout();
+    }
+  } finally {
+    this._initialized.set(true);
+  }
+}
+```
+
+#### `setToken(token: string)`
+
+Normalizes the token (strips `Bearer ` prefix and stray quotes), writes it to `_token` and `localStorage`, computes the expiry timestamp, persists it, and schedules auto-logout.
+
+#### `setUser(user: any)`
+
+Sets the `_user` signal and serializes the user object to `localStorage` under the `user` key.
+
+#### `logout()`
+
+Clears both signals (`_user`, `_token`), cancels the auto-logout timer, and removes all three `localStorage` / `sessionStorage` keys (`auth_token`, `auth_expires_at`, `user`).
+
+---
+
+## LoginService
+
+Handles credential validation and submission.
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/auth/login` | Submit credentials, returns JWT |
+| `GET` | `/api/user` | Fetch the authenticated user's profile |
+
+### `login(data, rememberMe): Observable<string>`
+
+Posts `LoginFormData` to `/auth/login` with `responseType: 'text'`. The response may be:
+- A raw JWT string
+- A JSON object with a `token`, `access_token`, or `jwt` field
+- A string with a leading `Bearer ` prefix
+
+All three cases are normalized before being passed to `AuthService.setToken()`.
+
+```typescript login.service.ts
+login(data: LoginFormData, rememberMe: boolean): Observable<string> {
+  return this.http
+    .post(`${this.apiUrl}/auth/login`, data, { responseType: 'text' })
+    .pipe(
+      tap((rawToken: string) => {
+        let token = (rawToken ?? '').toString().trim();
+        try {
+          const parsed = JSON.parse(rawToken);
+          token = (parsed.token || parsed.access_token || parsed.jwt || rawToken) as string;
+        } catch (e) {
+          token = rawToken.replace(/"/g, '').trim();
+        }
+        token = token.replace(/"/g, '').replace(/^Bearer\s+/i, '').trim();
+        this.auth.setToken(token);
+      }),
+    );
+}
+```
+
+### `getProfile(): Observable<any>`
+
+Fetches `GET /api/user` and writes the result to `AuthService.setUser()`. Called after a successful login to populate the user signal.
+
+### Helper methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `validateForm(data)` | `ValidationError[]` | Client-side field validation |
+| `getAuthToken()` | `string \| null` | Delegates to `auth.token()` |
+| `clearAuthToken()` | `void` | Delegates to `auth.logout()` |
+| `isAuthenticated()` | `boolean` | Delegates to `auth.isLogged()` |
+
+---
+
+## RegisterService (client users)
+
+Registers a standard client account (`roleId: 3` by default).
+
+### Endpoint
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/auth/register` | Create a new user account, returns text |
+
+### `submitClientRegistration(data): Observable<string>`
+
+Builds a `RegisterFormData` payload with default values and posts it:
+
+```typescript register-user.service.ts
+submitClientRegistration(data: RegisterFormData): Observable<string> {
+  const payload: RegisterFormData = {
+    username:        data.username?.trim(),
+    email:           data.email?.trim(),
+    password:        data.password,
+    comfirmPassword: data.comfirmPassword?.trim(),
+    phoneNumber:     data.phoneNumber?.trim(),
+    anonymous:       data.anonymous ?? false,
+    roleId:          data.roleId ?? 3,       // client role
+    birthDate:       data.birthDate,
+    latitude:        data.latitude  ?? 4.6097,  // Bogotá default
+    longitude:       data.longitude ?? -74.0721,
+  };
+  return this.http.post(this.REGISTER_URL, payload, { responseType: 'text' });
+}
+```
+
+### `validateClientForm(data): ValidationError[]`
+
+Runs client-side checks (required username, valid email, password strength, password confirmation match) before the request is sent.
+
+---
+
+## RegisterServiceOwner (motel owners)
+
+`RegisterServiceOwner` mirrors `RegisterService` but sets `roleId: 2` (owner) and does not supply default latitude/longitude — the motel registration flow collects the precise coordinates.
+
+```typescript register-user-est.service.ts
+const payload: RegisterFormData = {
+  // ...
+  roleId:    data.roleId ?? 2,   // owner role
+  latitude:  data.latitude,      // required from form
+  longitude: data.longitude,
+};
+```
+
+<Note>
+Both services post to the same `POST /api/auth/register` endpoint. The backend distinguishes the account type by the `roleId` field in the request body.
+</Note>
+
+---
+
+## ForgotService
+
+Handles the two-step password reset flow.
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/auth/reset-password-request?email=...` | Sends reset email, body is `null` |
+| `POST` | `/api/auth/reset-password` | Sets the new password using the reset token |
+
+```typescript forgot.service.ts
+requestReset(email: string): Observable<string> {
+  return this.http.post(
+    `${this.baseUrl}/reset-password-request?email=${encodeURIComponent(email)}`,
+    null,
+    { responseType: 'text' }
+  );
+}
+
+resetPassword(token: string, newPassword: string): Observable<string> {
+  return this.http.post(
+    `${this.baseUrl}/reset-password`,
+    { token, newPassword },
+    { responseType: 'text' }
+  );
+}
+```
+
+---
+
+## HTTP interceptors
+
+### authInterceptor
+
+A functional Angular interceptor (`HttpInterceptorFn`) that attaches `Authorization: Bearer <token>` to outbound requests.
+
+**Rules applied in order:**
+
+1. `OPTIONS` requests — passed through unchanged.
+2. SSR (non-browser) — passed through unchanged.
+3. Request already has an `Authorization` header — not overwritten.
+4. Cloudinary URLs (`api.cloudinary.com`) — skipped. `CloudinaryService` uses `HttpBackend` directly, but this provides a second layer of protection.
+5. Public endpoints (`/auth/login`, `/auth/register`) — skipped.
+6. Non-Ubik URLs — skipped (only `ubik-back.duckdns.org`, `localhost`, or relative paths receive the header).
+7. No token in `AuthService` — passed through unchanged.
+
+```typescript auth-interceptor.ts
+export const authInterceptor: HttpInterceptorFn = (req, next) => {
+  // ... skip rules 1-5 ...
+  const authService = inject(AuthService);
+  const token = authService.token();
+  if (!token) return next(req);
+
+  return next(
+    req.clone({
+      setHeaders: { Authorization: `Bearer ${token}` },
+    })
+  );
+};
+```
+
+### debugInterceptor
+
+Active only when `environment.production` is `false`. Logs every completed HTTP response to the browser console in the format:
+
+```
+<ResourceName> — METHOD url (status)
+```
+
+Errors are logged with `console.error` including status code and error message. Disabled automatically in production builds.
+
+---
+
+## PermissionService
+
+Maps role IDs to named permissions and provides three check methods.
+
+```typescript permission.service.ts
+export type Permission =
+  | 'view_dashboard'
+  | 'edit_users'
+  | 'create_room'
+  | 'delete_room'
+  | 'view_reports';
+```
+
+### Role → permission matrix
+
+| Permission | Admin | Owner | Client |
+|------------|:-----:|:-----:|:------:|
+| `view_dashboard` | ✓ | ✓ | |
+| `edit_users` | ✓ | | |
+| `create_room` | ✓ | ✓ | |
+| `delete_room` | ✓ | | |
+| `view_reports` | ✓ | ✓ | |
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `hasPermission(p)` | `boolean` | True if the current role includes `p` |
+| `hasAnyPermission(ps)` | `boolean` | True if the role includes at least one of `ps` |
+| `hasAllPermissions(ps)` | `boolean` | True if the role includes every item in `ps` |

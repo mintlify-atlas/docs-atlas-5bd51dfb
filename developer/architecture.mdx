@@ -1,0 +1,189 @@
+---
+title: "Architecture Overview"
+description: "High-level architecture of the Ubik Angular PWA, including directory structure, module organization, routing, and server-side rendering."
+---
+
+Ubik is a Progressive Web App (PWA) built with **Angular 20** and rendered server-side using **Angular SSR** with an **Express** backend. The app connects two user roles — motel owners and clients — through a single-page application with role-based routing and a shared REST API.
+
+## High-level architecture
+
+<CardGroup cols={2}>
+  <Card title="Angular SPA" icon="browser">
+    Client-side Angular application bootstrapped from `src/main.ts`. Handles all UI rendering, routing, and state management using Angular Signals.
+  </Card>
+  <Card title="Angular SSR + Express" icon="server">
+    Server-side rendering layer (`src/server.ts`) powered by `AngularNodeAppEngine` and Express. Serves pre-rendered HTML for initial page loads.
+  </Card>
+  <Card title="Backend API" icon="database">
+    REST API hosted at `https://ubik-back.duckdns.org`. Exposes `/api` endpoints for data and `/auth` endpoints for authentication.
+  </Card>
+  <Card title="Cloudinary" icon="cloud">
+    Image upload and hosting via Cloudinary. Used for motel and room images with a dedicated upload preset and folder.
+  </Card>
+</CardGroup>
+
+## Directory structure
+
+```
+src/
+├── app/
+│   ├── components/          # Shared, reusable UI components
+│   ├── core/                # Application core (guards, interceptors, models, services, utils)
+│   │   ├── guards/          # Route guards (permission-based access control)
+│   │   ├── interceptors/    # HTTP interceptors (auth token injection, debug logging)
+│   │   ├── models/          # TypeScript interfaces and types (motel, room, reservation, users)
+│   │   ├── services/        # Business logic services (auth, motel, room, reservation)
+│   │   └── utils/           # Utility functions
+│   ├── layout/              # Application shell components (header, footer, mobile nav)
+│   └── views/               # Page-level components organized by feature
+│       ├── dashboard/       # Admin and owner dashboards
+│       ├── explore/         # Motel discovery and search
+│       ├── home/            # Landing page
+│       ├── motel-profile/   # Motel detail page
+│       ├── rooms-motel/     # Rooms listing for a motel
+│       ├── product-room/    # Individual room detail
+│       ├── user-profile/    # User profile and edit
+│       ├── payment/         # Payment success and failure pages
+│       └── Forms/           # Authentication and registration forms
+├── environments/            # Environment-specific configuration
+│   ├── environment.ts       # Development environment
+│   └── environment.prod.ts  # Production environment
+├── main.ts                  # Browser bootstrap entry point
+├── main.server.ts           # Server bootstrap entry point
+├── server.ts                # Express server for SSR
+└── styles.css               # Global styles
+```
+
+## Module architecture
+
+### `components/`
+
+Shared UI components used across multiple views. Includes `card`, `card-motel`, `card-room`, `card-offers`, `filter-modal`, `map`, `payment-modal`, and others. These components are presentational and receive data via `@Input()` bindings.
+
+### `core/`
+
+The core module contains all non-visual application logic:
+
+- **`guards/`** — Route guards that enforce role-based access. The `permissionGuard` factory returns a `CanActivateFn` that checks the current user's permissions before allowing navigation.
+- **`interceptors/`** — Functional HTTP interceptors registered globally via `withInterceptors()`. The `authInterceptor` injects Bearer tokens; the `debugInterceptor` logs HTTP activity in development.
+- **`models/`** — TypeScript interfaces for all domain entities: `motel.model.ts`, `room.model.ts`, `reservation.model.ts`, `users.model.ts`.
+- **`services/`** — Injectable services for all API communication and business logic, including `AuthService`, `MotelService`, `RoomService`, and `ReservationService`.
+- **`utils/`** — Pure utility functions shared across services and components.
+
+### `layout/`
+
+Application shell components rendered persistently across route changes:
+
+- `header/` — Top navigation bar
+- `footer/` — Page footer
+- `nav-bar-bottom/` — Mobile bottom navigation bar
+
+### `views/`
+
+Page-level routed components. Each subdirectory maps to one or more application routes. Views compose components from `components/` and consume services from `core/services/`.
+
+## Routing architecture
+
+Routes are defined in `src/app/app.routes.ts` and registered via `provideRouter()` in `app.config.ts`.
+
+| Path | Component | Notes |
+|---|---|---|
+| `/` | `Home` | Landing page |
+| `/explore` | `Explore` | Motel search and map view |
+| `/motelProfile/:id` | `MotelProfile` | Motel detail, dynamic ID param |
+| `/rooms-motel` | `RoomsMotel` | Rooms listing for a motel |
+| `/rooms-offerts` | `RoomsOfferts` | Rooms with active offers |
+| `/roominfo` | `ProductRoom` | Individual room detail |
+| `/listProperty` | `PropertyUserComponent` | Owner's motel list |
+| `/login` | `LoginComponent` | Login form |
+| `/select-register` | `RegisterSelect` | Registration type selection |
+| `/register-user` | `RegisterUser` | Client registration |
+| `/register-owner` | `RegisterOwner` | Owner registration |
+| `/forgot-password` | `ForgotPasswordComponent` | Password reset |
+| `/create-motel` | `CreateMotelComponent` | Create a new motel |
+| `/create-room` | `CreateRoomComponent` | Add a room to a motel |
+| `/dashboard/admin` | `DashboardAdmin` | Admin dashboard (guarded) |
+| `/dashboard/owner` | `DashboardOwner` | Owner dashboard (guarded) |
+| `/userProfile` | `UserProfile` | User profile view |
+| `/edit-profile` | `EditProfileComponent` | Edit user profile |
+| `/payment/success` | `PaymentSuccessComponent` | Stripe payment success |
+| `/payment/failure` | `PaymentFailureComponent` | Stripe payment failure |
+| `/**` | — | Redirects to `/` |
+
+The `dashboard/admin` and `dashboard/owner` routes are protected by `permissionGuard('view_dashboard')`, which verifies the user holds the required permission before activating the route.
+
+## Key Angular features
+
+- **Signals and `computed()`** — Reactive state management without RxJS subjects. Services expose `signal()`-based state that components read directly.
+- **`inject()`** — Used in functional guards, interceptors, and `provideAppInitializer()` instead of constructor injection.
+- **`HttpClient` with functional interceptors** — HTTP requests are made via `HttpClient`; interceptors are registered as plain functions using `withInterceptors()`.
+- **Zoneless change detection** — The app uses `provideZonelessChangeDetection()`, replacing Zone.js-based dirty checking with explicit Signal-driven updates.
+- **Client hydration with event replay** — `provideClientHydration(withEventReplay())` ensures that user interactions during SSR hydration are replayed after the client takes over.
+
+## Server-side rendering
+
+SSR is implemented with three files working together:
+
+<AccordionGroup>
+  <Accordion title="src/main.server.ts — server bootstrap">
+    Exports a `bootstrap` function that calls `bootstrapApplication(App, config, context)` using the merged server config (`app.config.server.ts`). This function is the entry point invoked by the Angular SSR engine for each incoming request.
+
+    ```typescript
+    import { BootstrapContext, bootstrapApplication } from '@angular/platform-browser';
+    import { App } from './app/app';
+    import { config } from './app/app.config.server';
+
+    const bootstrap = (context: BootstrapContext) =>
+        bootstrapApplication(App, config, context);
+
+    export default bootstrap;
+    ```
+  </Accordion>
+  <Accordion title="src/app/app.config.server.ts — server providers">
+    Merges the base `appConfig` with server-specific providers. Adds `provideServerRendering(withRoutes(serverRoutes))` to enable route-aware server rendering.
+
+    ```typescript
+    import { mergeApplicationConfig } from '@angular/core';
+    import { provideServerRendering, withRoutes } from '@angular/ssr';
+    import { appConfig } from './app.config';
+    import { serverRoutes } from './app.routes.server';
+
+    const serverConfig = {
+      providers: [provideServerRendering(withRoutes(serverRoutes))]
+    };
+
+    export const config = mergeApplicationConfig(appConfig, serverConfig);
+    ```
+  </Accordion>
+  <Accordion title="src/server.ts — Express server">
+    Creates an Express app that serves compiled static assets from `dist/frontend/browser/` and delegates all other requests to `AngularNodeAppEngine` for server-side rendering.
+
+    ```typescript
+    const angularApp = new AngularNodeAppEngine();
+
+    app.use(express.static(browserDistFolder, { maxAge: '1y', index: false }));
+
+    app.use((req, res, next) => {
+      angularApp
+        .handle(req)
+        .then((response) =>
+          response ? writeResponseToNodeResponse(response, res) : next(),
+        )
+        .catch(next);
+    });
+    ```
+
+    The server listens on the `PORT` environment variable, defaulting to `4000`. It is also compatible with PM2 process management.
+  </Accordion>
+</AccordionGroup>
+
+## Backend API
+
+All data requests go to the backend hosted at `https://ubik-back.duckdns.org`:
+
+| Base URL | Purpose |
+|---|---|
+| `https://ubik-back.duckdns.org/api` | Application data (motels, rooms, reservations, users) |
+| `https://ubik-back.duckdns.org/auth` | Authentication (login, registration, session) |
+
+The `authInterceptor` automatically attaches a Bearer token to all requests targeting this domain. Public endpoints (`/auth/login`, `/auth/register`) and Cloudinary upload requests are excluded from token injection.

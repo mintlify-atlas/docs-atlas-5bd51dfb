@@ -1,0 +1,110 @@
+---
+title: "User roles overview"
+description: "Ubik supports three roles — Customer, Motel Owner, and Admin — each with distinct permissions enforced at the route and service level."
+---
+
+Every Ubik account is assigned a single role at registration. The role is stored as a numeric `roleId` in the user record and embedded in the JWT token. Angular route guards and a permission service read that value to decide what each user can access.
+
+## Roles at a glance
+
+| Role | `roleId` | Dashboard route | Key capability |
+|------|----------|-----------------|----------------|
+| Customer | `9182736450192837` | — | Browse motels, make reservations |
+| Motel Owner | `3847261094857362` | `/dashboard/owner` | Manage motels and rooms |
+| Admin | `7392841056473829` | `/dashboard/admin` | Approve registrations, oversee platform |
+
+## Role IDs in `AuthService`
+
+The service exposes three Angular signals that evaluate the current user's `roleId`:
+
+```typescript
+// src/app/core/services/auth.service.ts
+isAdmin = computed(() => this.role() === 7392841056473829);
+isOwner = computed(() => this.role() === 3847261094857362);
+isUser  = computed(() => this.role() === 9182736450192837);
+```
+
+The `role` signal is derived directly from the authenticated user object:
+
+```typescript
+role = computed(() => this._user()?.roleId ?? null);
+```
+
+## How roles are enforced
+
+### JWT token and session storage
+
+When a user logs in, `AuthService` stores the token in `localStorage` under the key `auth_token` and persists the user object under `user`. The `roleId` field on that object drives all permission checks. The session expires after 24 hours by default, or earlier if the JWT `exp` claim is shorter.
+
+### `permissionGuard` route guard
+
+Dashboard routes are protected by `permissionGuard`, a factory guard that accepts a `Permission` string and blocks navigation if the current user lacks that permission.
+
+```typescript
+// src/app/app.routes.ts
+{
+  path: 'dashboard/admin',
+  canActivate: [permissionGuard('view_dashboard')],
+  component: DashboardAdmin,
+},
+{
+  path: 'dashboard/owner',
+  canActivate: [permissionGuard('view_dashboard')],
+  component: DashboardOwner,
+},
+```
+
+Internally, the guard calls `PermissionService.hasPermission()`. If the check fails, the user is redirected to `/home`.
+
+```typescript
+// src/app/core/guards/permission.guard.ts
+export const permissionGuard =
+  (requiredPermission: Permission): CanActivateFn =>
+  async () => {
+    const allowed = permissionService.hasPermission(requiredPermission);
+    if (!allowed) return router.parseUrl('/home');
+    return true;
+  };
+```
+
+### `PermissionService` permission map
+
+Permissions are mapped statically by `roleId`:
+
+```typescript
+// src/app/core/services/permission.service.ts
+private readonly ROLE_PERMISSIONS: Record<number, Permission[]> = {
+  7392841056473829: ['view_dashboard', 'edit_users', 'create_room', 'delete_room', 'view_reports'], // admin
+  3847261094857362: ['view_dashboard', 'create_room', 'view_reports'],                              // owner
+  9182736450192837: [],                                                                             // customer
+};
+```
+
+The available `Permission` type values are:
+
+```typescript
+export type Permission =
+  | 'view_dashboard'
+  | 'edit_users'
+  | 'create_room'
+  | 'delete_room'
+  | 'view_reports';
+```
+
+<Info>
+Customers have an empty permissions array. They can access public routes freely but are redirected to `/home` if they attempt to navigate to any guarded route.
+</Info>
+
+## Role pages
+
+<CardGroup cols={3}>
+  <Card title="Customer" icon="user" href="/roles/customer">
+    Browse motels, make reservations, and manage a personal profile.
+  </Card>
+  <Card title="Motel owner" icon="building" href="/roles/motel-owner">
+    Register and manage motels, rooms, and view booking dashboards.
+  </Card>
+  <Card title="Admin" icon="shield" href="/roles/admin">
+    Approve motel registrations, manage users, and oversee the platform.
+  </Card>
+</CardGroup>

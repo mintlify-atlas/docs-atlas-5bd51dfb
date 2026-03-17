@@ -1,0 +1,188 @@
+---
+title: 'Room Service'
+description: 'Services for room CRUD operations, amenity lookups, availability checking, and image management via Cloudinary.'
+---
+
+`RoomService` covers all room-related HTTP operations: creating and fetching rooms, loading available amenities/services, checking availability for a given date and time window, and subscribing to availability notifications.
+
+## Room model
+
+```typescript room.model.ts
+export interface Room {
+  id:               number;
+  motelId:          number;
+  motelName:        string;
+  motelCity:        string;
+  motelAddress:     string;
+  motelPhoneNumber: string;
+  number:           string;    // room label, e.g. "101"
+  roomType:         string;
+  price:            number;
+  description:      string;
+  imageUrls:        string[];  // Cloudinary secure_url strings
+  serviceIds:       number[];  // IDs of associated amenities
+  latitude:         number;
+  longitude:        number;
+  isAvailable:      boolean;
+}
+```
+
+### `isAvailable` flag
+
+`isAvailable` is a backend-computed field returned with every `Room` object. It reflects whether the room has no active reservation at query time. For fine-grained availability (specific date + time range), use `checkAvailability()` instead.
+
+---
+
+## Supporting interfaces
+
+```typescript room.service.ts
+export interface AvailabilityResult {
+  available: boolean;
+  message?:  string;
+}
+
+export interface RoomReservation {
+  id:         number;
+  room_id:    number;
+  start_date: string;
+  start_time: string;
+  end_time:   string;
+  status:     'pending' | 'confirmed' | 'cancelled';
+}
+```
+
+---
+
+## RoomService
+
+All methods return `EMPTY` during SSR (non-browser platforms). The private helper `inBrowser<T>(obs)` wraps every observable before returning it.
+
+### Room endpoints
+
+| Method | Path | Returns | Description |
+|--------|------|---------|-------------|
+| `POST` | `/api/rooms` | `Room` | Create a new room |
+| `GET` | `/api/rooms` | `Room[]` | All rooms |
+| `GET` | `/api/rooms/:id` | `Room` | Room by ID |
+| `GET` | `/api/motels/:motelId/rooms` | `Room[]` | All rooms for a specific motel |
+
+### Services / amenities endpoints
+
+| Method | Path | Returns | Description |
+|--------|------|---------|-------------|
+| `GET` | `/api/services` | `Service[]` | All available room amenities |
+
+### Availability endpoints
+
+| Method | Path | Returns | Description |
+|--------|------|---------|-------------|
+| `GET` | `/api/rooms/:id/availability` | `AvailabilityResult` | Check availability for a date + time range |
+| `GET` | `/api/rooms/:id/reservations` | `RoomReservation[]` | All reservations for a room on a given date |
+| `POST` | `/api/rooms/:id/notify-available` | `void` | Subscribe email to availability notifications |
+
+### Method signatures
+
+```typescript room.service.ts
+// Room CRUD
+createRoom(payload: RoomCreatePayload): Observable<Room>
+getRooms(): Observable<Room[]>
+getRoomById(id: number): Observable<Room>
+getRoomsByMotel(motelId: number): Observable<Room[]>
+
+// Amenities
+getAllServices(): Observable<Service[]>
+
+// Availability
+checkAvailability(
+  roomId:    number,
+  date:      string,   // ISO date: "YYYY-MM-DD"
+  startTime: string,   // "HH:mm"
+  endTime:   string,   // "HH:mm"
+): Observable<AvailabilityResult>
+
+getReservationsForDate(roomId: number, date: string): Observable<RoomReservation[]>
+
+subscribeAvailability(roomId: number, email: string): Observable<void>
+```
+
+### Checking availability
+
+`checkAvailability()` sends the date and time range as query parameters:
+
+```typescript room.service.ts
+checkAvailability(
+  roomId: number,
+  date: string,
+  startTime: string,
+  endTime: string,
+): Observable<AvailabilityResult> {
+  const params = new HttpParams()
+    .set('date', date)
+    .set('startTime', startTime)
+    .set('endTime', endTime);
+
+  return this.inBrowser(
+    this.http.get<AvailabilityResult>(
+      `${this.roomsUrl}/${roomId}/availability`,
+      { params },
+    ),
+  );
+}
+```
+
+**Example request:**
+```
+GET /api/rooms/42/availability?date=2026-04-01&startTime=14:00&endTime=16:00
+```
+
+**Response:**
+```json
+{ "available": true }
+```
+or
+```json
+{ "available": false, "message": "Room is already booked during this period" }
+```
+
+---
+
+## Room image management
+
+Room images are stored in Cloudinary and referenced as `secure_url` strings in the `imageUrls` array on the `Room` object. The upload flow uses `CloudinaryService` directly from the create-room form component.
+
+<Steps>
+  <Step title="Validate and preview">
+    Use `CloudinaryService.isValidImage(file)` and `isValidSize(file, maxMB)` before uploading. Call `createPreview(file)` to show a thumbnail immediately.
+  </Step>
+  <Step title="Upload to Cloudinary">
+    Call `CloudinaryService.uploadFile(file, 'rooms')` or `uploadMultiple(files, 'rooms')`. The `folderSuffix` `'rooms'` places images under `Ubik/rooms/` in your Cloudinary account.
+  </Step>
+  <Step title="Include URLs in the room payload">
+    Add the returned `secure_url` strings to `RoomCreatePayload.imageUrls` before calling `RoomService.createRoom()`.
+  </Step>
+  <Step title="Revoke preview URLs">
+    Call `CloudinaryService.revokePreview(url)` for each preview URL once the upload completes.
+  </Step>
+</Steps>
+
+<Info>
+`CloudinaryService` uses `HttpBackend` to bypass Angular interceptors. The JWT token is never sent to Cloudinary — the upload relies solely on the unsigned upload preset `angular_images`.
+</Info>
+
+---
+
+## Availability notification subscription
+
+When a room is unavailable, users can subscribe to be notified when it becomes free:
+
+```typescript
+roomService.subscribeAvailability(roomId, 'user@example.com').subscribe();
+```
+
+This sends:
+```
+POST /api/rooms/:id/notify-available
+Content-Type: application/json
+
+{ "email": "user@example.com" }
+```

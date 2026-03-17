@@ -1,0 +1,167 @@
+---
+title: "Environment Configuration"
+description: "Environment variables, API endpoints, Cloudinary configuration, and HTTP interceptor behavior for the Ubik Angular application."
+---
+
+Ubik uses Angular's built-in environment file system to manage configuration across development and production builds. Both files export a single `environment` object that is imported throughout the codebase.
+
+## Environment files
+
+<Tabs>
+  <Tab title="Development (environment.ts)">
+    ```typescript
+    export const environment = {
+      production: false,
+      apiUrl: 'https://ubik-back.duckdns.org/api',
+      authUrl: 'https://ubik-back.duckdns.org/auth',
+      cloudinary: {
+        cloudName: 'du4tcug9q',
+        uploadPreset: 'angular_images',
+        folder: 'Ubik',
+      },
+    };
+    ```
+  </Tab>
+  <Tab title="Production (environment.prod.ts)">
+    ```typescript
+    export const environment = {
+      production: true,
+      apiUrl: 'https://ubik-back.duckdns.org/api',
+      authUrl: 'https://ubik-back.duckdns.org/auth',
+      cloudinary: {
+        cloudName: 'du4tcug9q',
+        uploadPreset: 'angular_images',
+        folder: 'Ubik',
+      },
+    };
+    ```
+  </Tab>
+</Tabs>
+
+## Configuration fields
+
+| Field | Type | Description |
+|---|---|---|
+| `production` | `boolean` | Set to `false` in development, `true` in production. Controls behaviors such as the `debugInterceptor` (which only runs when `production` is `false`). |
+| `apiUrl` | `string` | Base URL for all application data requests (motels, rooms, reservations, users). |
+| `authUrl` | `string` | Base URL for authentication requests (login, registration, session). |
+| `cloudinary.cloudName` | `string` | Your Cloudinary cloud identifier. |
+| `cloudinary.uploadPreset` | `string` | The unsigned upload preset configured in your Cloudinary dashboard. |
+| `cloudinary.folder` | `string` | The default folder where uploaded images are stored in Cloudinary. |
+
+## Environment file swapping
+
+Angular automatically replaces `environment.ts` with `environment.prod.ts` when building with the `production` configuration. This is declared in `angular.json`:
+
+```json
+"configurations": {
+  "production": {
+    "fileReplacements": [
+      {
+        "replace": "src/environments/environment.ts",
+        "with": "src/environments/environment.prod.ts"
+      }
+    ]
+  }
+}
+```
+
+Because `ng build` defaults to the `production` configuration (set via `"defaultConfiguration": "production"` in `angular.json`), the swap happens automatically on every standard build. To build without it, pass the development configuration explicitly:
+
+```bash
+ng build --configuration development
+```
+
+## Changing the backend API URL
+
+To point the application at a different backend, update `apiUrl` and `authUrl` in the relevant environment file:
+
+```typescript
+export const environment = {
+  production: false,
+  apiUrl: 'http://localhost:3000/api',      // local backend
+  authUrl: 'http://localhost:3000/auth',    // local auth
+  cloudinary: {
+    cloudName: 'du4tcug9q',
+    uploadPreset: 'angular_images',
+    folder: 'Ubik',
+  },
+};
+```
+
+<Note>
+  Both `apiUrl` and `authUrl` are used directly in services (`AuthService`, `MotelService`, etc.) via `inject`-based access to the environment object. No additional registration step is required.
+</Note>
+
+## Cloudinary setup
+
+Ubik uses Cloudinary for uploading and serving motel and room images.
+
+| Field | Value | Description |
+|---|---|---|
+| `cloudName` | `du4tcug9q` | Identifies your Cloudinary account in upload and delivery URLs. |
+| `uploadPreset` | `angular_images` | An **unsigned** upload preset created in the Cloudinary dashboard. Allows client-side uploads without exposing API secrets. |
+| `folder` | `Ubik` | All uploaded images are organized under this folder in your Cloudinary media library. |
+
+To connect a different Cloudinary account, replace all three values with those from your Cloudinary dashboard under **Settings → Upload → Upload presets**.
+
+<Warning>
+  Never use a **signed** upload preset for client-side uploads. Signed presets require your Cloudinary API secret, which must not be exposed in browser code.
+</Warning>
+
+## HTTP interceptors
+
+Two functional interceptors are defined in `src/app/core/interceptors/`.
+
+### `authInterceptor`
+
+Registered globally in `app.config.ts` via `withInterceptors([authInterceptor])`. On every outgoing HTTP request it:
+
+1. Skips `OPTIONS` preflight requests.
+2. Skips requests made during SSR (server-side platform check).
+3. Skips requests that already carry an `Authorization` header.
+4. Skips all Cloudinary upload requests (`api.cloudinary.com`).
+5. Skips the public auth endpoints `/auth/login` and `/auth/register`.
+6. Attaches `Authorization: Bearer <token>` for all other requests targeting `ubik-back.duckdns.org` or `localhost`.
+
+```typescript
+export const authInterceptor: HttpInterceptorFn = (req, next) => {
+  // ... skips OPTIONS, SSR, existing Authorization, Cloudinary, public endpoints
+
+  const authService = inject(AuthService);
+  const token = authService.token();
+
+  if (!token) return next(req);
+
+  return next(
+    req.clone({
+      setHeaders: { Authorization: `Bearer ${token}` },
+    })
+  );
+};
+```
+
+### `debugInterceptor`
+
+Available but **not registered by default**. It is commented out in `src/main.ts` and can be enabled during development by adding it to the `withInterceptors()` array.
+
+When active, it logs all HTTP responses and errors to the browser console. It is a no-op in production (`if (environment.production) return next(req)`).
+
+```typescript
+// To enable, add debugInterceptor to withInterceptors in src/main.ts:
+withInterceptors([authInterceptor, debugInterceptor])
+```
+
+## Route guards
+
+The `permissionGuard` in `src/app/core/guards/permission.guard.ts` is a factory that returns a `CanActivateFn`. It is used on the admin and owner dashboard routes:
+
+```typescript
+{
+  path: 'dashboard/admin',
+  canActivate: [permissionGuard('view_dashboard')],
+  component: DashboardAdmin,
+}
+```
+
+The guard waits for the `AuthService` session to be restored before checking whether the current user holds the required permission. If the check fails, it redirects to `/home`.

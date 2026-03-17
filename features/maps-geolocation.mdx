@@ -1,0 +1,182 @@
+---
+title: "Maps & Geolocation"
+description: "How Ubik renders interactive Leaflet maps and uses the browser Geolocation API to show the user's position."
+---
+
+Ubik embeds interactive maps using [Leaflet](https://leafletjs.com) through a standalone Angular component (`app-map`). The map shows motel and room markers, tracks the user's real-time position, and pans to selected points.
+
+## Map component
+
+The map component is located at `src/app/components/map/map.ts`.
+
+**Selector:** `app-map`
+
+### Inputs
+
+| Input | Type | Description |
+|---|---|---|
+| `points` | `MapPoint[]` | Array of marker positions to render on the map |
+| `active` | `MapPoint \| null` | When set, the map flies to this point at zoom level 17 |
+
+### Output
+
+| Output | Type | Description |
+|---|---|---|
+| `markerClicked` | `EventEmitter<MapPoint>` | Emitted when the user clicks a motel or room marker |
+
+### MapPoint interface
+
+```typescript
+export interface MapPoint {
+  lat: number;
+  lng: number;
+  name: string;
+  id?: number;
+}
+```
+
+### Public method
+
+**`invalidateSize()`** — Forces Leaflet to recalculate the map container size. Call this after showing or resizing a container that was previously hidden (used in the mobile map modal).
+
+## Leaflet initialization
+
+Leaflet is loaded asynchronously at runtime to avoid SSR issues on the server:
+
+```typescript
+async ngAfterViewInit() {
+  if (!isPlatformBrowser(this.platformId)) return;
+
+  const leaflet = await import('leaflet');
+  this.L = (leaflet as any).default ?? leaflet;
+
+  this.map = this.L.map(this.mapContainer.nativeElement, {
+    center: [4.6, -74.1],  // Default center: Bogotá, Colombia
+    zoom: 13,
+  });
+
+  this.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors',
+  }).addTo(this.map);
+}
+```
+
+The default center is Bogotá (latitude `4.6`, longitude `-74.1`). Once the user's location is obtained, the map flies to their position.
+
+<Note>
+  Leaflet is not included in the Angular bundle. It is imported dynamically on the client, so the map does not render during server-side rendering.
+</Note>
+
+## User geolocation
+
+Geolocation is obtained using the browser's `navigator.geolocation` API via the `getUserLocation()` utility in `src/app/components/map/geolocation.ts`:
+
+```typescript
+export interface UserLocation {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+}
+
+export function getUserLocation(): Promise<UserLocation> {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error('Geolocalización no soportada'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        resolve({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        });
+      },
+      (err) => reject(err),
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0,
+      }
+    );
+  });
+}
+```
+
+After the initial position is resolved, the component also calls `navigator.geolocation.watchPosition()` to update the user marker in real time as they move. The watch is cleaned up in `ngOnDestroy()` to prevent memory leaks.
+
+### Zoom behavior
+
+The map only flies to the user's location if motel or room markers are already loaded. This prevents the map from zooming to the user's position in an empty view:
+
+```typescript
+if (!this.userZoomDone && this.points.length > 0) {
+  setTimeout(() => {
+    this.map.flyTo(this.userLatLng, 14, { animate: true, duration: 1.8 });
+    this.userZoomDone = true;
+  }, 2000);
+}
+```
+
+<Info>
+  The 2-second delay gives the tile layer time to load before animating, resulting in a smoother experience.
+</Info>
+
+## Motel markers on the map
+
+Motels and rooms are shown as custom markers using a motel icon (`assets/icons/leaflet/icon_motel.png`). Each marker gets a popup with the motel or room name.
+
+Marker positions come from the `latitude` and `longitude` fields on the `Motel` and `Room` models:
+
+```typescript
+// Motel model
+export interface Motel {
+  latitude: number | null;
+  longitude: number | null;
+  // ...
+}
+
+// Room model
+export interface Room {
+  latitude: number;
+  longitude: number;
+  // ...
+}
+```
+
+Cards with `lat` or `lng` equal to `null`, `undefined`, or `0` are excluded from the map:
+
+```typescript
+private mapPoints(cards: Card3Informacion[]): MapPoint[] {
+  return cards
+    .filter(c => c.lat != null && c.lng != null && c.lat !== 0 && c.lng !== 0)
+    .map(c => ({
+      lat: c.lat!,
+      lng: c.lng!,
+      name: c.type === 'room' ? `${c.motelName} — ${c.roomType}` : c.motelName,
+      id: c.id,
+    }));
+}
+```
+
+When multiple markers are present, the map calls `fitBounds()` with 50 px padding to show all of them. A single marker sets the view to zoom level 14.
+
+## Custom map icons
+
+The map uses two custom icons stored in the `assets/icons/leaflet/` directory:
+
+| File | Used for | Size |
+|---|---|---|
+| `icon_person.png` | User location marker | 25 × 32 px |
+| `icon_motel.png` | Motel / room markers | 27 × 36 px |
+
+## Leaflet dependency
+
+Leaflet is listed as a direct dependency in `package.json`. Install it with:
+
+```bash
+npm install leaflet
+npm install --save-dev @types/leaflet
+```
+
+Because Leaflet accesses the DOM directly, it must only run in the browser. The `isPlatformBrowser()` guard at the top of `ngAfterViewInit()` ensures the map is never initialized during SSR.

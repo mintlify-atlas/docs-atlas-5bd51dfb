@@ -1,0 +1,157 @@
+---
+title: "Installation"
+description: "How to clone, install dependencies, and run the Ubik Angular application locally in development or production mode."
+---
+
+## Prerequisites
+
+Before you start, make sure you have the following installed:
+
+<CardGroup cols={3}>
+  <Card title="Node.js 18+" icon="node-js">
+    Required to run the Angular CLI and the SSR Express server. Download from [nodejs.org](https://nodejs.org).
+  </Card>
+  <Card title="pnpm" icon="box">
+    The project uses pnpm as its package manager (`pnpm@10.32.1`). Install with `npm install -g pnpm`.
+  </Card>
+  <Card title="Angular CLI" icon="terminal">
+    Required to serve, build, and test the application. Install with `npm install -g @angular/cli`.
+  </Card>
+</CardGroup>
+
+<Info>
+  pnpm is strongly recommended. The `package.json` declares `pnpm@10.32.1` as the `packageManager`. Using npm or yarn will work but may produce a different lockfile.
+</Info>
+
+## Installation
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/Juankos0714/Ubik-App.git
+    cd Ubik-App
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    <CodeGroup>
+
+    ```bash pnpm
+    pnpm install
+    ```
+
+    ```bash npm
+    npm install
+    ```
+
+    ```bash yarn
+    yarn install
+    ```
+
+    </CodeGroup>
+  </Step>
+
+  <Step title="Start the development server">
+    <CodeGroup>
+
+    ```bash pnpm
+    pnpm start
+    ```
+
+    ```bash npm
+    npm start
+    ```
+
+    ```bash yarn
+    yarn start
+    ```
+
+    </CodeGroup>
+
+    The application is available at `http://localhost:4200`.
+  </Step>
+</Steps>
+
+## Available scripts
+
+All scripts are defined in `package.json` and can be run with your package manager of choice.
+
+| Script | Command | Description |
+|---|---|---|
+| `start` | `ng serve` | Start the development server on port 4200 |
+| `build` | `ng build` | Build for production (default configuration) |
+| `watch` | `ng build --watch --configuration development` | Rebuild on file changes in development mode |
+| `test` | `ng test` | Run unit tests with Karma |
+| `serve:ssr:frontend` | `node dist/frontend/server/server.mjs` | Start the compiled SSR server |
+
+## Running tests
+
+```bash
+ng test
+```
+
+Tests run in a headless Chrome browser using Karma and Jasmine. Test files use the `.spec.ts` suffix and are colocated with the components they test.
+
+## Building for production
+
+<Steps>
+  <Step title="Build the application">
+    ```bash
+    ng build
+    ```
+
+    This runs the `production` configuration by default (as set in `angular.json`). The output is written to `dist/frontend/`:
+
+    ```
+    dist/frontend/
+    ├── browser/    # Static assets and client bundles
+    └── server/     # SSR server bundle
+        └── server.mjs
+    ```
+
+    The production build:
+    - Replaces `environment.ts` with `environment.prod.ts`
+    - Hashes output filenames (`outputHashing: 'all'`)
+    - Enforces bundle size budgets (500 kB warning, 1 MB error for initial bundle)
+  </Step>
+
+  <Step title="Start the SSR server">
+    ```bash
+    node dist/frontend/server/server.mjs
+    ```
+
+    Alternatively, use the npm script:
+
+    <CodeGroup>
+
+    ```bash pnpm
+    pnpm run serve:ssr:frontend
+    ```
+
+    ```bash npm
+    npm run serve:ssr:frontend
+    ```
+
+    </CodeGroup>
+
+    The server listens on the port defined by the `PORT` environment variable, defaulting to `4000`.
+
+    ```bash
+    PORT=8080 node dist/frontend/server/server.mjs
+    ```
+  </Step>
+</Steps>
+
+<Tip>
+  For a development build with source maps and no optimization, use `ng build --configuration development` or run the `watch` script to get live rebuilds.
+</Tip>
+
+## Development vs. production builds
+
+| Setting | Development | Production |
+|---|---|---|
+| Optimization | Disabled | Enabled |
+| Source maps | Enabled | Disabled |
+| Environment file | `environment.ts` | `environment.prod.ts` |
+| Output hashing | None | All files hashed |
+| Bundle size budget | Not enforced | Enforced |

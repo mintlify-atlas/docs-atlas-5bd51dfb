@@ -1,0 +1,80 @@
+---
+title: "Offers & promotions"
+description: "How to view and manage special room offers in Ubik using the /rooms-offerts route and the card-offers component."
+---
+
+## What are offers?
+
+Offers in Ubik represent rooms highlighted for special pricing or promotional visibility. They are surfaced through a dedicated view — `/rooms-offerts` — that shows the owner a column of **offer cards**, one per promoted room.
+
+The view is powered by the `RoomsOfferts` component (`app-rooms-offerts`), which maintains a list of `CardOff` objects and renders each with the `app-card-offers` component.
+
+## The CardOff shape
+
+Each offer card displays the following data:
+
+```typescript
+// From the CardOff type used in rooms-offerts.ts
+{
+  id: number;          // unique offer identifier
+  image: string;       // URL of the room photo used as the card thumbnail
+  nombre: string;      // offer name / title, e.g. 'Oferta Suite Premium'
+  descripcion: string; // short description of the offer
+}
+```
+
+## Viewing your offers
+
+Navigate to `/rooms-offerts`. The page shows:
+
+- An **Agregar Oferta** card at the top — a call-to-action tile that opens the flow for creating a new offer.
+- A column of existing offer cards below it, one for each active promotion.
+
+Each offer card (`app-card-offers`) renders with:
+
+| Attribute | Description |
+|---|---|
+| `[card]` | The `CardOff` data object |
+| `[textButton1]` | Label for the primary action button — `'Editar'` |
+| `[textButton2]` | Label for the secondary action button — `'Eliminar'` |
+| `[showButton01]` | Whether to show the edit button — `true` |
+| `[showButton02]` | Whether to show the delete button — `true` |
+| `[showDescription]` | Whether to show the description text — `false` by default |
+
+## Managing offers
+
+<Steps>
+  <Step title="Open the offers view">
+    Log in as a motel owner and navigate to `/rooms-offerts`. You will see your current list of offers rendered as a vertical column of cards, each with a room photo thumbnail, the offer title, and **Editar** / **Eliminar** action buttons.
+  </Step>
+
+  <Step title="Add a new offer">
+    Click the **Agregar Oferta** tile at the top of the page. This opens the offer creation flow where you can select a room and configure the promotional details.
+  </Step>
+
+  <Step title="Edit an existing offer">
+    Click **Editar** on the offer card you want to update. Adjust the offer name, description, or image and save the changes.
+  </Step>
+
+  <Step title="Remove an offer">
+    Click **Eliminar** on the offer card. The offer is removed from the list and the room returns to its standard pricing.
+  </Step>
+</Steps>
+
+## Tips for effective promotions
+
+<Tip>
+  Use a high-quality, well-lit room photo as the offer thumbnail. The image is the first thing guests see and directly affects click-through rates.
+</Tip>
+
+<Tip>
+  Keep offer names short and descriptive — for example, "Suite Premium — Weekend Special" rather than a generic label. Guests scan titles quickly.
+</Tip>
+
+<Tip>
+  Time-limited offers (for example, weekend or holiday promotions) tend to create urgency. Include the duration in the offer name or description.
+</Tip>
+
+<Note>
+  The `/rooms-offerts` route is only accessible to authenticated motel owners. Guests and unauthenticated users cannot reach this page.
+</Note>

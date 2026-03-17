@@ -1,0 +1,82 @@
+---
+title: "Customer role"
+description: "Customers are the guests of the platform. They can browse motels, view rooms, make reservations, and pay online — with or without a registered account."
+---
+
+The customer role (`roleId: 9182736450192837`) is assigned when a user registers through the standard sign-up flow. It is the default role for end-users of the platform.
+
+## Anonymous vs. authenticated browsing
+
+Ubik allows anonymous browsing of the public catalog. A user with `anonymous: true` in their profile can explore motels and rooms without logging in. Reservations and payment require an authenticated session.
+
+<Note>
+The `anonymous` field on the `Users` model is set to `true` for guest sessions. Once a user registers and logs in, the field is `false` and full booking functionality becomes available.
+</Note>
+
+## Registration flow
+
+<Steps>
+  <Step title="Navigate to account selection">
+    Go to `/select-register` to choose between registering as a customer or a motel owner.
+  </Step>
+  <Step title="Complete the customer registration form">
+    The customer registration form is at `/register-user`. Provide your username, email, password, and phone number.
+  </Step>
+  <Step title="Log in">
+    After registration, log in at `/login`. The `AuthService` stores the JWT token and user object in `localStorage` and sets the `roleId` on the session.
+  </Step>
+</Steps>
+
+## What customers can do
+
+- **Browse motels** — Search and filter the motel catalog on `/explore`.
+- **View motel profiles** — See details, images, and available rooms at `/motelProfile/:id`.
+- **View room details** — Inspect individual room information at `/roominfo`.
+- **Make reservations** — Book a room when authenticated.
+- **Pay online** — Complete payments through the integrated payment flow. On success, the user is redirected to `/payment/success`.
+- **View their profile** — See account details at `/userProfile`.
+- **Edit their profile** — Update personal information at `/edit-profile`.
+
+## Key routes
+
+| Route | Description |
+|-------|-------------|
+| `/explore` | Browse and search the motel catalog |
+| `/motelProfile/:id` | View a specific motel's details and rooms |
+| `/roominfo` | View individual room details |
+| `/userProfile` | View personal profile |
+| `/edit-profile` | Edit personal profile information |
+| `/payment/success` | Payment confirmation page |
+| `/payment/failure` | Payment failure page |
+
+## User profile model
+
+The `Users` interface defines the shape of every customer account:
+
+```typescript
+// src/app/core/models/users.model.ts
+export interface Users {
+  id: number;
+  username: string;
+  email: string;
+  password: string;
+  phoneNumber: string;
+  anonymous: boolean; // true for guest sessions
+  roleId: number;
+  birthDate: Date | null;
+  longitude: number | null;
+  latitude: number | null;
+}
+```
+
+The profile view displays `username`, `email`, `phoneNumber`, and `birthDate`. The `longitude` and `latitude` fields store the user's last known location when geolocation is enabled.
+
+## Permissions
+
+Customers have no entries in the `PermissionService` permission map:
+
+```typescript
+9182736450192837: [], // customer
+```
+
+This means customers cannot access any guarded route such as `/dashboard/admin` or `/dashboard/owner`. Attempting to navigate to a protected route redirects them to `/home`.

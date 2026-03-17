@@ -1,0 +1,170 @@
+---
+title: "Registering a motel"
+description: "Step-by-step guide for motel owners to register a property on Ubik, including required fields, legal documents, image uploads, and the approval workflow."
+---
+
+<Info>
+  You must be registered as a motel owner before you can register a property. If you have not yet applied for the owner role, contact an administrator.
+</Info>
+
+## Overview
+
+Registering a motel in Ubik involves filling out your property's basic information, providing your coordinates, uploading a profile photo and optional gallery images, and attaching the required legal documents (RNT and RUES). After submission the property enters the admin approval workflow before it becomes publicly visible.
+
+## Required fields
+
+The following fields are required when creating a motel. They map directly to the `Motel` interface:
+
+```typescript
+export interface Motel {
+  id: number;
+  name: string;               // required — minimum 3 characters
+  address: string;            // required
+  city: string;               // required
+  phoneNumber: string;
+  description: string | null;
+  propertyId: number;         // set automatically from your user ID
+  latitude: number | null;
+  longitude: number | null;
+  approvalStatus: 'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED';
+  approvalDate: string | null;
+  approvedByUserId: number | null;
+  rejectionReason: string | null;
+  rues: string | null;        // Cloudinary URL of your RUES image
+  rnt: string | null;         // Cloudinary URL of your RNT image
+  ownerDocumentType: string;  // 'CC' | 'NIT' | 'CE' | 'PASAPORTE'
+  ownerDocumentNumber: string;
+  ownerFullName: string;
+  legalRepresentativeName: string;
+  legalDocumentUrl: string | null;
+  hasCompleteLegalInfo: boolean;
+  imageUrls: MotelImage[];
+}
+```
+
+## Steps to register a motel
+
+<Steps>
+  <Step title="Navigate to the registration form">
+    Go to `/create-motel` in the application. You will see the **CREAR MOTEL** form.
+
+    From your property list (`/listProperty`) you can also click **+ Agregar Motel** in the header to navigate directly to this form.
+  </Step>
+
+  <Step title="Fill in the basic details">
+    Complete the **Datos básicos** section:
+
+    | Field | Required | Notes |
+    |---|---|---|
+    | **Name** | Yes | Minimum 3 characters |
+    | **Phone number** | No | Format: `+57XXXXXXXXXX` or local number (7–15 digits) |
+    | **Address** | Yes | Full street address |
+    | **City** | Yes | City where the motel is located |
+    | **Description** | No | Free-text description of the property |
+  </Step>
+
+  <Step title="Set the motel location">
+    In the **Ubicación** section you have two options:
+
+    - Click **Obtener ubicación actual** to let the browser detect your GPS coordinates automatically. The app uses `navigator.geolocation` with high-accuracy mode and a 10-second timeout.
+    - Enter the **Latitude** (–90 to 90) and **Longitude** (–180 to 180) values manually.
+
+    <Tip>
+      Using the automatic location button is the fastest way to set accurate coordinates. Make sure your browser has location permissions enabled.
+    </Tip>
+  </Step>
+
+  <Step title="Upload a profile photo">
+    In the **Foto de perfil** section, select a single image file. This is **required** — the form will not submit without it.
+
+    The image is uploaded to Cloudinary under the `motels/profile` folder using the following configuration from `environment.ts`:
+
+    ```typescript
+    cloudinary: {
+      cloudName:    'du4tcug9q',
+      uploadPreset: 'angular_images',
+      folder:       'Ubik',
+    }
+    ```
+
+    The final Cloudinary path becomes `Ubik/motels/profile/<timestamp>_<random>_<filename>`.
+  </Step>
+
+  <Step title="Upload gallery images (optional)">
+    In the **Galería** section, select one or more image files. You can remove individual images before submitting using the **Quitar** button next to each file name.
+
+    Gallery images are uploaded to the `motels/gallery` folder. The profile photo URL and all gallery URLs are combined into a single `imageUrls` array and sent to the backend.
+  </Step>
+
+  <Step title="Attach legal documents">
+    The **Documentos (RNT / RUES)** section requires both files:
+
+    | Field | Required | Accepted formats |
+    |---|---|---|
+    | **RNT** | Yes | Image (`image/*`) |
+    | **RUES** | Yes | Image (`image/*`) |
+    | **Legal document** | No | Image or PDF (`image/*`, `application/pdf`) |
+
+    Both the RNT and RUES files are uploaded to Cloudinary under `motels/legal` before the motel record is created. The resulting URLs are stored in the `rnt` and `rues` fields of the motel.
+
+    <Warning>
+      The form will reject submission if either the RNT or RUES file is missing. Upload both before clicking **Crear motel**.
+    </Warning>
+  </Step>
+
+  <Step title="Fill in owner information">
+    Complete the **Propietario** section:
+
+    | Field | Required | Notes |
+    |---|---|---|
+    | **Document type** | Yes | One of: `CC`, `NIT`, `CE`, `PASAPORTE` |
+    | **Document number** | Yes | Your ID or tax number |
+    | **Owner full name** | Yes | Legal name as it appears on documents |
+    | **Legal representative name** | No | Required only if the motel is registered under a company |
+  </Step>
+
+  <Step title="Submit the form">
+    Click **Crear motel**. The application performs the following steps in sequence:
+
+    1. Uploads RNT, RUES, optional legal document, profile photo, and gallery images to Cloudinary in parallel using `forkJoin`.
+    2. Sends the complete `CreateMotelRequest` payload to `POST /api/motels/with-images`.
+    3. On success, redirects you to `/listProperty`.
+
+    If any step fails, an error message is shown at the top of the form.
+  </Step>
+</Steps>
+
+## Approval workflow
+
+After submission, your motel moves through the following states tracked in the `approvalStatus` field:
+
+<Steps>
+  <Step title="PENDING">
+    The motel has been submitted and is waiting for an administrator to begin review. The property is not publicly visible.
+  </Step>
+  <Step title="UNDER_REVIEW">
+    An administrator has started reviewing the submitted information and documents.
+  </Step>
+  <Step title="APPROVED or REJECTED">
+    If approved, the motel becomes visible on the platform. If rejected, the `rejectionReason` field contains the administrator's explanation and you can correct and resubmit.
+  </Step>
+</Steps>
+
+<Note>
+  You can view the `approvalStatus` of each property from your property list at `/listProperty`.
+</Note>
+
+## What happens to your images
+
+All files are uploaded directly from the browser to Cloudinary using the unsigned upload preset `angular_images`. The `CloudinaryService` uses `HttpBackend` to bypass Angular HTTP interceptors, which means no JWT token is ever sent to Cloudinary.
+
+```typescript
+// CloudinaryService uploads legal docs to:
+//   Ubik/motels/legal/<timestamp>_<rand>_<filename>
+// Profile image to:
+//   Ubik/motels/profile/<timestamp>_<rand>_<filename>
+// Gallery images to:
+//   Ubik/motels/gallery/<timestamp>_<rand>_<filename>
+```
+
+The returned `secure_url` values are stored as strings in the motel record.

@@ -1,0 +1,93 @@
+---
+title: "Introduction"
+description: "Ubik is a Progressive Web App for motel booking and management, built with Angular. It connects guests looking for accommodation with motel owners managing their properties."
+---
+
+Ubik is a PWA built with Angular that digitizes the motel booking experience. Guests can discover nearby motels on an interactive map, check room availability, and complete secure reservations — all from a mobile-optimized interface. Motel owners get a dedicated dashboard to register their establishments, manage rooms and offers, and track incoming reservations.
+
+<CardGroup cols={2}>
+  <Card title="Quick start" icon="rocket" href="/quickstart">
+    Get set up as a guest, owner, or developer in minutes.
+  </Card>
+  <Card title="Explore motels" icon="map-pin" href="/features/explore-motels">
+    Browse nearby motels with interactive maps and availability filters.
+  </Card>
+  <Card title="Motel management" icon="building" href="/motel-management/register-motel">
+    Register your property, add rooms, and manage reservations.
+  </Card>
+  <Card title="Developer guide" icon="code" href="/developer/architecture">
+    Understand the Angular architecture and set up the project locally.
+  </Card>
+</CardGroup>
+
+## What problems Ubik solves
+
+### For guests
+
+Finding a motel traditionally requires calling ahead, visiting booking aggregators with incomplete information, or navigating unfamiliar areas without location context. Ubik solves this by:
+
+- Showing motels on an interactive Leaflet map centered on the guest's current geolocation.
+- Displaying real-time room availability, services, and amenities for each property.
+- Letting guests complete a reservation and payment entirely in-browser without leaving the platform.
+
+### For motel owners
+
+Small motel operators often lack affordable, purpose-built tools for managing bookings and listing their properties online. Ubik provides:
+
+- A self-service registration flow to add their establishment with photos (uploaded via Cloudinary), location, and description.
+- Per-room management: add room types, set amenities, and upload room images.
+- An owner dashboard (`/dashboard/owner`) to view all reservations made by guests.
+- Offer and promotion management to attract more customers.
+
+## Platform architecture
+
+Ubik follows a modular Angular architecture with a clear separation between UI components, business logic services, and data models.
+
+```
+src/
+├── app/
+│   ├── components/       # Reusable UI components (cards, map, payment modal)
+│   ├── core/
+│   │   ├── guards/       # Route access control (permissionGuard)
+│   │   ├── interceptors/ # HTTP interceptors
+│   │   ├── models/       # TypeScript interfaces (Users, Motel, Room, Reservation)
+│   │   ├── services/     # Business logic (auth, motel, room, reservation, payment)
+│   │   └── utils/        # Shared validation utilities
+│   ├── layout/           # Header, footer, bottom nav bar
+│   └── views/            # Page-level components (home, explore, dashboard, forms)
+└── environments/         # Environment configuration (API URL, Cloudinary)
+```
+
+The backend is a separate service. The frontend communicates with it exclusively through the API URL defined in `environment.ts`.
+
+<Note>
+  The backend API base URL is `https://ubik-back.duckdns.org/api`. Authentication endpoints are served from `https://ubik-back.duckdns.org/auth`.
+</Note>
+
+## Tech stack
+
+| Technology | Version | Role |
+|---|---|---|
+| Angular | 20+ | Frontend framework with SSR support via `@angular/ssr` |
+| TypeScript | ~5.9 | Type-safe application code throughout |
+| Tailwind CSS | v4 | Utility-first responsive styling, mobile-first |
+| PrimeNG | 20+ | UI component library |
+| Leaflet | 1.9 | Interactive map rendering and geolocation display |
+| Stripe.js | 8+ | Client-side payment processing |
+| RxJS | ~7.8 | Reactive data streams and HTTP handling |
+| Cloudinary | — | Image upload and CDN delivery for motel/room photos |
+| Font Awesome | 7+ | Icon set via `@fortawesome/angular-fontawesome` |
+
+## User roles
+
+Ubik supports three distinct roles, controlled by `roleId` on the `Users` model and enforced at runtime by `permissionGuard`:
+
+| Role | `roleId` | Access |
+|---|---|---|
+| Customer | `3` | Browse, reserve, and pay for rooms |
+| Motel Owner | — | Manage properties, rooms, reservations via owner dashboard |
+| Admin | — | Full platform oversight via admin dashboard |
+
+<Info>
+  Ubik is a SENA Formative Project (2024–2026) developed by Juan Camilo Rojas Ospina, Miguel Angel Vargas Navarro, Julian Gordillo, and Nicolas Londoño Diaz.
+</Info>

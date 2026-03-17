@@ -1,0 +1,64 @@
+---
+title: 'Components overview'
+description: 'A reference for every shared component in Ubik, organized by category.'
+---
+
+Ubik organizes reusable UI into two directories:
+
+- **`src/app/components/`** — feature-agnostic presentational components shared across pages.
+- **`src/app/layout/`** — application-shell components that wrap every page (header, footer, mobile nav).
+
+<Info>
+All components are standalone Angular components (`standalone: true`). Import them directly into the `imports` array of any component or route that needs them — there is no shared module.
+</Info>
+
+## Component inventory
+
+| Selector | Class | Directory | Purpose |
+|---|---|---|---|
+| `app-card-motel` | `CardMotel` | `components/card-motel/` | Circular motel preview card with cover image, name, and location |
+| `app-card-room` | `CardRoom` | `components/card-room/` | Room card with image, type badge, price, and service tags |
+| `app-card-offers` | `CardOffers` | `components/card-offers/` | Promotional offer card with optional description and action buttons |
+| `app-card` | `Card` | `components/card/` | Full `Room` model card with "Reservar" and "Ver más" buttons |
+| `app-card-2` | `Card2` | `components/card-2/` | Static promotional banner card (hardcoded data) |
+| `app-card-3` | `Card3` | `components/card-3/` | Unified room/motel card with reservation and map location actions |
+| `app-loading-card` | `LoadingCard` | `components/loading-card/` | Skeleton placeholder for `app-card` and `app-card-room` |
+| `app-loading-card-3` | `LoadingCard3` | `components/loading-card-3/` | Skeleton placeholder for `app-card-3` |
+| `app-map` | `Map` | `components/map/` | Leaflet map with motel markers, user geolocation, and marker-click events |
+| `app-payment-modal` | `PaymentModal` | `components/payment-modal/` | Stripe payment modal opened via Angular CDK Dialog |
+| `app-filter-modal` | `FilterModal` | `components/filter-modal/` | Search filter modal (price, room type, city, services) opened via CDK Dialog |
+| `app-button-01` | `Button01` | `components/button-01/` | Primary red gradient button with optional router navigation or payment action |
+| `app-button-02` | `Button02` | `components/button-02/` | Secondary button variant |
+| `app-input` | `Inputcomponent` | `components/input/` | Reactive-forms-compatible text input with optional password toggle |
+| `app-tag` | `Tag` | `components/tag/` | Minimal inline tag label |
+| `app-logo-01` | `Logo01` | `components/logo-01/` | Ubik logotype |
+| `app-header` | `Header` | `layout/header/` | Top navigation bar with search, auth state, and sticky scroll behavior |
+| `app-footer` | `Footer` | `layout/footer/` | Footer with branding |
+| `app-nav-bar-bottom` | `NavBarBottomComponent` | `layout/nav-bar-bottom/` | Fixed bottom navigation bar for mobile |
+
+## Layout components
+
+The three layout components in `src/app/layout/` are included once in `app.component.html` and wrap all routed views.
+
+**`app-header`** (`selector: 'app-header'`) renders the top navigation. It handles:
+- Auth-aware links (login, profile, owner dashboard, admin dashboard)
+- An autocomplete search bar (department → city → keyword)
+- A sticky transparent nav that appears when scrolling up past 100 px on the home route
+
+**`app-footer`** (`selector: 'app-footer'`) renders the branding footer. It has no inputs.
+
+**`app-nav-bar-bottom`** (`selector: 'app-nav-bar-bottom'`) is the fixed bottom tab bar visible on mobile. It reacts to auth state and role to show the correct tabs, and collapses any open slide-up menu on route changes.
+
+## Explore the detail pages
+
+<CardGroup cols={3}>
+  <Card title="Card components" icon="rectangle-history" href="/developer/components/cards">
+    All six card variants: motel, room, offers, card, card-2, and card-3.
+  </Card>
+  <Card title="Map component" icon="map" href="/developer/components/map">
+    Leaflet-based interactive map with geolocation and marker events.
+  </Card>
+  <Card title="Payment modal" icon="credit-card" href="/developer/components/payment-modal">
+    Stripe payment modal with calendar date picker and availability checking.
+  </Card>
+</CardGroup>

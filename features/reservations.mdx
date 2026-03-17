@@ -1,0 +1,137 @@
+---
+title: "Making Reservations"
+description: "Step-by-step guide to selecting a room, choosing dates and times, and confirming a reservation in Ubik."
+---
+
+Reservations in Ubik are created through the `PaymentModal` component, which handles both the scheduling step and the Stripe payment step in a single dialog. You must be logged in to complete a reservation.
+
+## Reservation flow
+
+<Steps>
+  <Step title="Open the booking modal">
+    From any room card in the explore view, from the motel profile page, or from the product-room detail page, click **Reservar ahora** (or **Reservar** on mobile). This opens the `PaymentModal` dialog with the room ID passed as data.
+
+    The modal immediately calls `GET /api/rooms/:id` to load the room details and `GET /api/payments/config` to initialize Stripe in the background.
+  </Step>
+
+  <Step title="Select a date">
+    The modal shows a monthly calendar. Past dates are disabled. Select any future date — this loads the existing reservations for that date from `GET /api/rooms/:id/reservations?date=YYYY-MM-DD` so conflicting time slots can be marked as unavailable.
+  </Step>
+
+  <Step title="Choose check-in and check-out times">
+    After selecting a date, choose a check-in time from the available hour slots (08:00 – 23:00). Then choose a check-out time. Check-out can be on the same day (next available slot) or the following day (00:00 – 07:00) if the stay crosses midnight.
+
+    When you select the check-out time, the app immediately calls `GET /api/rooms/:id/availability` to verify the slot is still free.
+
+    ```
+    GET /api/rooms/:id/availability?date=YYYY-MM-DD&startTime=HH:MM&endTime=HH:MM
+    ```
+
+    The total price is calculated client-side:
+
+    ```typescript
+    get totalPrice(): number {
+      return (this.room?.price ?? 0) * this.totalHours;
+    }
+    ```
+  </Step>
+
+  <Step title="Confirm reservation">
+    Click **Reservar** to submit. The modal calls `POST /api/reservations` with the reservation payload:
+
+    ```typescript
+    paymentService.createReservation(
+      roomId,
+      motelId,
+      totalPrice,
+      userId,
+      checkInDate,   // ISO 8601 datetime string
+      checkOutDate,  // ISO 8601 datetime string
+    )
+    ```
+
+    A successful response returns the new reservation `id` and an optional `confirmationCode`.
+  </Step>
+
+  <Step title="Proceed to payment">
+    Immediately after the reservation is created, the modal calls `POST /api/payments/create-intent` with the `reservationId` and `totalPrice`. Stripe Elements mounts in the modal and you complete the card payment. See [Payments](/features/payments) for the full payment flow.
+  </Step>
+</Steps>
+
+## Reservation model
+
+The `Reservation` interface represents the data stored for each booking:
+
+```typescript
+export interface Reservation {
+  id: number;
+  motel_id: number;
+  room_id: number;
+  user_id: number;
+  total_price: number;
+  start_date: Date;       // check-in datetime
+  end_date: Date;         // check-out datetime
+  status: 'pending' | 'confirmed' | 'cancelled';
+  special_requests: string;
+  created_at: Date;
+  updated_at: Date;
+}
+```
+
+### Status values
+
+| Status | Description |
+|---|---|
+| `pending` | Reservation created but payment not yet confirmed |
+| `confirmed` | Payment succeeded; reservation is active |
+| `cancelled` | Reservation was cancelled before or after payment |
+
+<Note>
+  Time slots marked as unavailable in the calendar are those with reservations in `pending` or `confirmed` status. Cancelled reservations free up the slot.
+</Note>
+
+## POST /api/reservations
+
+Creates a new reservation. Requires authentication.
+
+**Request body:**
+
+```typescript
+{
+  roomId: number;
+  motelId: number;
+  totalPrice: number;
+  userId: number;
+  checkInDate: string;   // ISO 8601, e.g. "2026-03-20T14:00:00.000Z"
+  checkOutDate: string;  // ISO 8601, e.g. "2026-03-20T20:00:00.000Z"
+}
+```
+
+**Response:**
+
+```typescript
+{
+  id: number;
+  confirmationCode?: string;  // e.g. "260310-0001-F8B"
+}
+```
+
+## Triggering payment after reservation creation
+
+Once `POST /api/reservations` returns the reservation `id`, the `PaymentModal` immediately chains into the Stripe payment flow:
+
+```typescript
+this.paymentService.createReservation(...).subscribe({
+  next: (res) => {
+    const reservationId = res.id;
+    this.paymentService.createPaymentIntent(reservationId, payload.totalPrice).subscribe({
+      next: (intentRes) => {
+        this.clientSecret = intentRes.clientSecret;
+        this.mountStripeElements();
+      }
+    });
+  }
+});
+```
+
+The reservation is always created before the payment intent. If the payment intent call fails, the reservation remains in `pending` status.

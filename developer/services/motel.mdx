@@ -1,0 +1,297 @@
+---
+title: 'Motel Service'
+description: 'Services for fetching, creating, updating, and managing motel data, images, search filtering, and Colombian location data.'
+---
+
+Motel data is managed by three services: `MotelService` owns CRUD and image operations, `PropertyUserService` (exported from `list-motel.service.ts`) provides owner-scoped list operations, and `SearchService` maintains a shared reactive filter state used by the header and explore views.
+
+## Motel model
+
+```typescript motel.model.ts
+export interface MotelImage {
+  id:        number;
+  url:       string;
+  role:      'GALLERY' | 'COVER' | string;
+  sortOrder: number;
+}
+
+export interface Motel {
+  id:                       number;
+  name:                     string;
+  address:                  string;
+  phoneNumber:              string;
+  description:              string | null;
+  city:                     string;
+  propertyId:               number;
+  dateCreated:              string;
+  imageUrls:                MotelImage[];
+  latitude:                 number | null;
+  longitude:                number | null;
+  approvalStatus:           'PENDING' | 'UNDER_REVIEW' | 'APPROVED' | 'REJECTED';
+  approvalDate:             string | null;
+  approvedByUserId:         number | null;
+  rejectionReason:          string | null;
+  rues:                     string | null;
+  rnt:                      string | null;
+  ownerDocumentType:        string;
+  ownerDocumentNumber:      string;
+  ownerFullName:            string;
+  legalRepresentativeName:  string;
+  legalDocumentUrl:         string | null;
+  hasCompleteLegalInfo:     boolean;
+  rooms?:                   Room[];
+}
+```
+
+<Info>
+`approvalStatus` reflects the admin review pipeline. Motels in `PENDING` or `UNDER_REVIEW` are not shown on the public Explore page until their status reaches `APPROVED`.
+</Info>
+
+---
+
+## MotelService
+
+Provides both public (unauthenticated) and private (owner-only) motel operations.
+
+<Note>
+All methods guard against server-side rendering by returning `EMPTY` when `isPlatformBrowser` is `false`.
+</Note>
+
+### Public endpoints
+
+| Method | Path | Returns | Description |
+|--------|------|---------|-------------|
+| `GET` | `/api/motels` | `Motel[]` | All approved public motels (Explore page) |
+| `GET` | `/api/motels/:id` | `Motel` | Single motel by ID |
+| `GET` | `/api/profile` | `Motel` | Owner profile |
+
+### Private endpoints (requires auth)
+
+| Method | Path | Returns | Description |
+|--------|------|---------|-------------|
+| `GET` | `/api/auth/motels/my-motels` | `Motel[]` | Motels owned by the logged-in user |
+| `POST` | `/api/motels` | `Motel` | Create a new motel |
+| `POST` | `/api/motels/with-images` | `Motel` | Create motel including image data |
+| `PUT` | `/api/motels/:id` | `Motel` | Update motel fields |
+| `DELETE` | `/api/motels/:id` | `void` | Delete motel |
+
+### Image endpoints
+
+| Method | Path | Returns | Description |
+|--------|------|---------|-------------|
+| `POST` | `/api/images/upload?folder=Ubik` | `{ url: string }` | Upload a single image file |
+| `PUT` | `/api/motels/:id/images/profile` | `void` | Set motel profile image URL |
+| `PUT` | `/api/motels/:id/images/cover` | `Motel` | Set motel cover image URL |
+| `POST` | `/api/motels/:id/images` | `{ count: number; urls: string[] }` | Add multiple gallery images |
+| `DELETE` | `/api/motels/:id/images/:imageId` | `{ ok: true }` | Delete image by ID |
+| `DELETE` | `/api/motels/:id/images` | `{ deleted: number }` | Delete images by URL array (body) |
+
+### Method signatures
+
+```typescript motel.service.ts
+getAllMotels(): Observable<Motel[]>
+getMotelById(id: number): Observable<Motel>
+getMyMotels(): Observable<Motel[]>
+createMotel(payload: CreateMotelRequest): Observable<Motel>
+updateMotel(id: number, payload: Partial<CreateMotelRequest>): Observable<Motel>
+deleteMotel(id: number): Observable<void>
+getProfile(): Observable<Motel>
+getMotels(): Observable<Motel[]>
+
+// Image management
+createMotelWithImages(payload: CreateMotelRequest): Observable<Motel>
+uploadImage(file: File, folder?: string): Observable<{ url: string }>
+setProfileImage(id: number, url: string): Observable<void>
+setCoverImage(motelId: number, url: string): Observable<Motel>
+addGalleryImages(motelId: number, images: File[]): Observable<{ count: number; urls: string[] }>
+deleteImageById(motelId: number, imageId: number): Observable<{ ok: true }>
+deleteImagesByUrl(motelId: number, urls: string[]): Observable<{ deleted: number }>
+```
+
+<Tip>
+`getAllMotels()` and `getMotels()` both call `GET /api/motels`. Use `getAllMotels()` for the Explore page and `getMyMotels()` for the owner dashboard to ensure the correct authorization context.
+</Tip>
+
+---
+
+## PropertyUserService (ListMotelService)
+
+Exported from `list-motel.service.ts` as `PropertyUserService`. Provides owner-scoped list operations with the same SSR guard.
+
+### Endpoints
+
+| Method | Path | Returns | Description |
+|--------|------|---------|-------------|
+| `GET` | `/api/auth/motels/my-motels` | `Motel[]` | Owner's motels |
+| `GET` | `/api/motels/:id` | `Users` | Fetch property by ID (for editing) |
+| `DELETE` | `/api/motels/:id` | `void` | Delete a property |
+| `POST` | `/api` | `Users` | Create property |
+| `PUT` | `/api/:id` | `Users` | Update property |
+
+### Method signatures
+
+```typescript list-motel.service.ts
+getMyMotels(): Observable<Motel[]>
+deleteProperty(id: number): Observable<void>
+getPropertyById(id: number): Observable<Users>
+createProperty(data: FormData | Users): Observable<Users>
+updateProperty(id: number, data: FormData | Users): Observable<Users>
+```
+
+---
+
+## SearchService
+
+A lightweight reactive state container shared between the search header and the Explore page. No HTTP calls — it holds filter criteria as signals.
+
+```typescript search.service.ts
+export interface SearchState {
+  department: string;
+  city:       string;
+  query:      string;
+}
+```
+
+### Signals
+
+| Signal / computed | Type | Description |
+|-------------------|------|-------------|
+| `state` | `Signal<SearchState>` (readonly) | Current filter state |
+| `hasPending` | `computed<boolean>` | `true` when any filter field is non-empty |
+
+### Methods
+
+```typescript search.service.ts
+// Write partial updates from the header
+set(partial: Partial<SearchState>): void
+
+// Call only AFTER the Explore component has applied the filters
+clear(): void
+```
+
+**Data flow:**
+
+1. The header component calls `set({ department, city, query })` when the user submits a search.
+2. The Explore component reads `state()` and `hasPending()` to filter the motel cards.
+3. After applying the filters, Explore calls `clear()` to reset the state.
+
+<Warning>
+Do not call `clear()` before the Explore component has finished consuming the state. The `hasPending` flag exists precisely to prevent premature clearing.
+</Warning>
+
+---
+
+## ColombiaService
+
+Loads department and municipality data from a local JSON asset (`/assets/data/colombia.json`) for use in motel registration address forms.
+
+The JSON is fetched once and cached indefinitely in memory via `shareReplay(1)`. Subsequent calls to any method resolve immediately from the cache.
+
+```typescript colombia.service.ts
+export interface Department {
+  id:             number;
+  name:           string;
+  municipalities: string[];
+}
+```
+
+### Methods
+
+```typescript colombia.service.ts
+/** All departments with their municipality lists */
+getAll(): Observable<Department[]>
+
+/** Array of department name strings only */
+getDepartments(): Observable<string[]>
+
+/** Municipalities for a specific department name */
+getMunicipalities(departmentName: string): Observable<string[]>
+```
+
+**Example usage in a form component:**
+
+```typescript
+this.colombia.getDepartments().subscribe(deps => {
+  this.departments = deps;
+});
+
+this.colombia.getMunicipalities('Cundinamarca').subscribe(cities => {
+  this.cities = cities;
+});
+```
+
+---
+
+## CloudinaryService
+
+Handles direct-to-Cloudinary image uploads. Uses `HttpBackend` instead of the default `HttpClient` to bypass all Angular interceptors — the JWT token is never sent to Cloudinary.
+
+### Configuration (from `environment.ts`)
+
+```typescript environment.ts
+cloudinary: {
+  cloudName:    'du4tcug9q',
+  uploadPreset: 'angular_images',
+  folder:       'Ubik',
+}
+```
+
+### Upload URL
+
+Upload requests are sent directly to:
+```
+https://api.cloudinary.com/v1_1/<cloudName>/<resource_type>/upload
+```
+
+The `resource_type` is `image` for `image/*` MIME types and `raw` for everything else.
+
+### Public ID naming
+
+Each uploaded file receives a deterministic public ID:
+```
+Ubik/<folderSuffix>/<timestamp>_<randomHex>_<safeName>
+```
+
+The `safeName` is computed by stripping diacritics, replacing spaces with underscores, and removing non-alphanumeric characters (max 80 chars).
+
+### Methods
+
+```typescript Cloudinary.service.ts
+/** Upload a single file; returns the Cloudinary secure_url */
+uploadFile(file: File, folderSuffix: string): Observable<string>
+
+/** Upload multiple files; failed uploads are skipped (no error thrown) */
+uploadMultiple(files: File[], folderSuffix: string): Observable<string[]>
+
+/** Validate MIME type (jpeg, jpg, png, webp only) */
+isValidImage(file: File): boolean
+
+/** Check that file size is within maxMB */
+isValidSize(file: File, maxMB: number): boolean
+
+/** Create a local object URL for preview (call revokePreview when done) */
+createPreview(file: File): string
+
+/** Release the object URL created by createPreview */
+revokePreview(url: string): void
+```
+
+### Upload flow
+
+<Steps>
+  <Step title="Validate the file">
+    Call `isValidImage(file)` and `isValidSize(file, maxMB)` before uploading.
+  </Step>
+  <Step title="Create a preview (optional)">
+    Call `createPreview(file)` to show a local thumbnail while the upload is in progress. Store the returned URL.
+  </Step>
+  <Step title="Upload to Cloudinary">
+    Call `uploadFile(file, 'motels')` or `uploadMultiple(files, 'motels')`. The method builds the `FormData` with `upload_preset` and `public_id`, then POSTs to the Cloudinary API.
+  </Step>
+  <Step title="Use the secure_url">
+    The observable emits the `secure_url` string. Pass it to `MotelService.setCoverImage()` or `setProfileImage()` to persist the reference on the backend.
+  </Step>
+  <Step title="Revoke the preview URL">
+    Call `revokePreview(previewUrl)` to free browser memory.
+  </Step>
+</Steps>

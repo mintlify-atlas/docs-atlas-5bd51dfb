@@ -1,0 +1,104 @@
+---
+title: "Owner dashboard"
+description: "Overview of the motel owner dashboard in Ubik, including the metrics it displays, how to access it, and links to key management actions."
+---
+
+## Overview
+
+The owner dashboard (`/dashboard/owner`) gives motel owners a high-level summary of their portfolio at a glance. It displays key operational metrics and provides quick-access actions to the most common management tasks.
+
+## Accessing the dashboard
+
+<Steps>
+  <Step title="Log in as a motel owner">
+    Use your owner credentials on the Ubik login screen. Only accounts with the `OWNER` role can reach the dashboard.
+  </Step>
+  <Step title="Navigate to /dashboard/owner">
+    After logging in, go to `/dashboard/owner`. The route is protected by `permissionGuard`, which verifies your role before granting access. Unauthorized users are redirected away from this route.
+  </Step>
+</Steps>
+
+<Warning>
+  The `/dashboard/owner` route is protected by a `permissionGuard`. Attempting to access it without an authenticated owner session will redirect you to the login page.
+</Warning>
+
+## Dashboard metrics
+
+The dashboard presents three summary cards in a responsive three-column grid:
+
+<CardGroup cols={3}>
+  <Card title="Moteles" icon="building">
+    Total number of motel properties registered under your account.
+  </Card>
+  <Card title="Reservas Hoy" icon="calendar">
+    Number of reservations made or active today across all your properties.
+  </Card>
+  <Card title="Ingresos Hoy" icon="dollar-sign">
+    Total revenue generated today across all your properties.
+  </Card>
+</CardGroup>
+
+The HTML structure from `dashboard-owner.html`:
+
+```html
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+  <div class="bg-black/60 ...">
+    <p>Moteles</p>
+    <p class="text-3xl font-bold">45</p>
+  </div>
+  <div class="bg-black/60 ...">
+    <p>Reservas Hoy</p>
+    <p class="text-3xl font-bold">18</p>
+  </div>
+  <div class="bg-black/60 ...">
+    <p>Ingresos Hoy</p>
+    <p class="text-3xl font-bold">$850</p>
+  </div>
+</div>
+```
+
+## Quick actions
+
+Below the metrics, the **Acciones** section provides two buttons:
+
+| Button | Description |
+|---|---|
+| **Agregar Motel** | Opens the motel registration form at `/create-motel`. |
+| **Ver Reservas** | Opens the reservations view for all your properties. |
+
+## From the dashboard to management tasks
+
+Use the following links to move from the dashboard into the management workflows:
+
+<CardGroup cols={2}>
+  <Card title="Register a motel" icon="plus" href="/motel-management/register-motel">
+    Add a new property, upload legal documents, and submit it for admin approval.
+  </Card>
+  <Card title="Manage rooms" icon="bed" href="/motel-management/manage-rooms">
+    Add rooms to your motels, configure types, set prices, and manage services.
+  </Card>
+  <Card title="Offers & promotions" icon="tag" href="/motel-management/offers-promotions">
+    View, create, and remove promotional offers for your rooms.
+  </Card>
+  <Card title="Property list" icon="list" href="/motel-management/register-motel">
+    See all your registered properties, their approval status, and per-property actions.
+  </Card>
+</CardGroup>
+
+## Component reference
+
+The dashboard is implemented as a standalone Angular component:
+
+```typescript
+// src/app/views/dashboard/owner/owner.ts
+import { Component } from '@angular/core';
+
+@Component({
+  selector: 'app-dashboard-owner',
+  imports: [],
+  templateUrl: './dashboard-owner.html',
+})
+export class DashboardOwner {}
+```
+
+`DashboardOwner` is intentionally lightweight — metrics are currently rendered as static values in the template. Dynamic data fetching from the API (using `MotelService.getMyMotels()` and reservation endpoints) is the expected next step in the component's development.

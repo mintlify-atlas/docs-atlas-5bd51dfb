@@ -1,0 +1,436 @@
+---
+title: 'Card components'
+description: 'Reference for all six card components in Ubik and their skeleton loading counterparts.'
+---
+
+Ubik provides six card components for displaying motels, rooms, and promotional content. Each card is standalone and driven by `@Input()` bindings.
+
+## app-card-motel
+
+Selector: `app-card-motel`  
+File: `src/app/components/card-motel/card-motel.ts`
+
+A circular card that links to a motel's profile page. It selects the best image to display (profile image preferred, cover image as fallback) and shows the motel name, city, address, and a "Verificado" badge when the motel's `approvalStatus` is `APPROVED`.
+
+### Inputs
+
+| Input | Type | Required | Description |
+|---|---|---|---|
+| `motel` | `Motel` | Yes | The motel object from the `Motel` model |
+
+### Computed getters
+
+| Getter | Returns | Description |
+|---|---|---|
+| `coverImage` | `string` | URL of the image with `role === 'COVER'`, or the first image |
+| `profileImage` | `string \| null` | URL of the image with `role === 'PROFILE'`, or `null` |
+| `formattedMinPrice` | `string \| null` | Minimum room price formatted as Colombian pesos (COP) |
+| `availableRoomsCount` | `number` | Count of rooms where `isAvailable === true` |
+| `totalRooms` | `number` | Total number of rooms on the motel |
+
+### Component class
+
+```typescript
+@Component({
+  selector: 'app-card-motel',
+  imports: [RouterLink],
+  templateUrl: './card-motel.html',
+})
+export class CardMotel {
+
+  @Input() motel!: Motel;
+
+  get coverImage(): string {
+    const cover = this.motel.imageUrls.find(img => img.role === 'COVER');
+    return cover?.url ?? this.motel.imageUrls[0]?.url ?? '';
+  }
+
+  get profileImage(): string | null {
+    const profile = this.motel.imageUrls.find(img => img.role === 'PROFILE');
+    return profile?.url ?? null;
+  }
+
+  get formattedMinPrice(): string | null {
+    if (!this.motel.rooms?.length) return null;
+    const min = Math.min(...this.motel.rooms.map(r => r.price));
+    return new Intl.NumberFormat('es-CO', {
+      style: 'currency',
+      currency: 'COP',
+      maximumFractionDigits: 0,
+    }).format(min);
+  }
+
+  get availableRoomsCount(): number {
+    return this.motel.rooms?.filter(r => r.isAvailable).length ?? 0;
+  }
+
+  get totalRooms(): number {
+    return this.motel.rooms?.length ?? 0;
+  }
+}
+```
+
+### Usage
+
+```html
+<app-card-motel [motel]="motelObject" />
+```
+
+---
+
+## app-card-room
+
+Selector: `app-card-room`  
+File: `src/app/components/card-room/card-room.ts`
+
+A dark-themed room card (width 288 px) showing an image with overlay badges for room number, type, and price. The footer row shows availability status and a "Ver hab." call to action.
+
+### CardHabitacion interface
+
+```typescript
+export interface CardHabitacion {
+  id: number;
+  nombre: string;
+  number: string;
+  tipo: string;
+  servicios: string[];
+  descripcion: string;
+  imagen: string;
+  price: number;
+}
+```
+
+### Inputs
+
+| Input | Type | Required | Description |
+|---|---|---|---|
+| `cardHabitacion` | `CardHabitacion` | Yes | Room data shaped to the local interface |
+
+### Component class
+
+```typescript
+@Component({
+  selector: 'app-card-room',
+  standalone: true,
+  imports: [CurrencyPipe],
+  templateUrl: './card-room.html',
+})
+export class CardRoom {
+  @Input() cardHabitacion!: CardHabitacion;
+}
+```
+
+### Usage
+
+```html
+<app-card-room [cardHabitacion]="{
+  id: 1,
+  nombre: 'Suite Ejecutiva',
+  number: '201',
+  tipo: 'SUITE',
+  servicios: ['Jacuzzi', 'WiFi'],
+  descripcion: 'Habitación de lujo con jacuzzi privado.',
+  imagen: 'https://example.com/room.jpg',
+  price: 180000
+}" />
+```
+
+---
+
+## app-card-offers
+
+Selector: `app-card-offers`  
+File: `src/app/components/card-offers/card-offers.ts`
+
+A horizontal promotional card used in the admin and motel owner dashboards. It renders an image on the right and text on the left, with up to two configurable action buttons.
+
+### CardOff interface
+
+```typescript
+export interface CardOff {
+  id: number;
+  image: string;
+  nombre: string;
+  descripcion?: string;
+}
+```
+
+### Inputs
+
+| Input | Type | Default | Description |
+|---|---|---|---|
+| `card` | `CardOff` | `{ id: 0, image: '', nombre: '', descripcion: '' }` | Offer data |
+| `showDescription` | `boolean` | `true` | Show or hide the description text |
+| `showButton01` | `boolean` | `true` | Show the primary action button |
+| `showButton02` | `boolean` | `false` | Show the secondary action button |
+| `textButton1` | `string` | `'Editar'` | Label for the primary button |
+| `textButton2` | `string` | `'Eliminar'` | Label for the secondary button |
+
+### Component class
+
+```typescript
+@Component({
+  selector: 'app-card-offers',
+  standalone: true,
+  imports: [Button01, Button02],
+  templateUrl: './card-offers.html',
+})
+export class CardOffers {
+
+  @Input() card: CardOff = {
+    id: 0,
+    image: '',
+    nombre: '',
+    descripcion: '',
+  };
+
+  @Input() showDescription: boolean = true;
+  @Input() showButton01: boolean = true;
+  @Input() showButton02: boolean = false;
+  @Input() textButton1: string = 'Editar';
+  @Input() textButton2: string = 'Eliminar';
+}
+```
+
+### Usage
+
+```html
+<!-- Admin view: edit + delete buttons -->
+<app-card-offers
+  [card]="offer"
+  [showButton02]="true"
+  textButton1="Editar"
+  textButton2="Eliminar"
+/>
+
+<!-- Public view: single CTA -->
+<app-card-offers
+  [card]="offer"
+  [showDescription]="false"
+  textButton1="Ver oferta"
+/>
+```
+
+---
+
+## app-card
+
+Selector: `app-card`  
+File: `src/app/components/card/card.ts`
+
+A dark room card driven by the full `Room` model (from `core/models/room.model`). It renders availability status, price, motel name, and two footer buttons: "Reservar" (opens `PaymentModal` via `Button01`) and "Ver más" (navigates to `/roominfo?id=<id>`).
+
+### Inputs
+
+| Input | Type | Required | Description |
+|---|---|---|---|
+| `card` | `Room` | Yes | Full room object from the API |
+
+### Component class
+
+```typescript
+@Component({
+  selector: 'app-card',
+  standalone: true,
+  templateUrl: './card.html',
+  imports: [Button01, Button02, CurrencyPipe]
+})
+export class Card {
+  @Input() card!: Room;
+  showDescription = true;
+}
+```
+
+<Note>
+`showDescription` is an internal flag — it is not an `@Input()`. It is always `true` and controls whether the room description paragraph is rendered.
+</Note>
+
+### Usage
+
+```html
+<app-card [card]="roomObject" />
+```
+
+---
+
+## app-card-2
+
+Selector: `app-card-2`  
+File: `src/app/components/card-2/card-2.ts`
+
+A simple banner card with a full-bleed image and a title overlay. The image and title are set in `ngOnInit` via `cargarDatos()` — this component has no `@Input()` bindings and is not data-driven. It is used as a static promotional element.
+
+### Component class
+
+```typescript
+interface Card2Info {
+  imagen: string;
+  titulo: string;
+}
+
+@Component({
+  selector: 'app-card-2',
+  imports: [],
+  templateUrl: './card-2.html',
+})
+export class Card2 implements OnInit {
+  card2: Card2Info = {
+    imagen: '',
+    titulo: ''
+  };
+
+  ngOnInit(): void {
+    this.cargarDatos();
+  }
+
+  cargarDatos(): void {
+    this.card2 = {
+      imagen: 'https://res.cloudinary.com/du4tcug9q/image/upload/v1763726311/image-habitation_mmy7ly.png',
+      titulo: 'Aniversario especial'
+    };
+  }
+}
+```
+
+<Warning>
+`app-card-2` hardcodes its image URL and title. It accepts no inputs. If you need a configurable banner, use `app-card-offers` instead.
+</Warning>
+
+### Usage
+
+```html
+<app-card-2 />
+```
+
+---
+
+## app-card-3
+
+Selector: `app-card-3`  
+File: `src/app/components/card-3/card-3.ts`
+
+The most versatile card. It handles both rooms and motels via a `type` discriminator field. For rooms it shows price, availability, a "Reservar" button (opens `PaymentModal`), and a "Ver más info" link. For motels it shows a "Ver motel" link. Both variants include a "Ver ubicación" button that emits the coordinates via `viewLocation`.
+
+### Card3Informacion interface
+
+```typescript
+export interface Card3Informacion {
+  id: number;
+  type: 'room' | 'motel';
+
+  // Common fields
+  motelName: string;
+  descripcion: string;
+  image: string;
+  location: string;
+  adress: string;
+
+  lat?: number;
+  lng?: number;
+
+  // Room-only fields
+  motelId?: number;
+  numberHab?: string;
+  roomType?: string;
+  price?: number;
+  isAvailable?: boolean;
+  serviceIds?: number[];
+}
+```
+
+### Inputs and outputs
+
+| Binding | Type | Required | Description |
+|---|---|---|---|
+| `@Input() card` | `Card3Informacion` | Yes | The room or motel data to display |
+| `@Output() viewLocation` | `EventEmitter<{ lat: number; lng: number; name: string; id: number }>` | — | Emitted when the user clicks "Ver ubicación" |
+
+### Component class
+
+```typescript
+@Component({
+  selector: 'app-card-3',
+  standalone: true,
+  imports: [CommonModule, Button01, RouterLink],
+  templateUrl: './card-3.html',
+})
+export class Card3 {
+
+  @Input() card!: Card3Informacion;
+
+  @Output() viewLocation = new EventEmitter<{
+    lat: number;
+    lng: number;
+    name: string;
+    id: number;
+  }>();
+
+  constructor(private dialog: Dialog, private router: Router) { }
+
+  openPayment() {
+    const dialogRef = this.dialog.open(PaymentModal, {
+      data: { id: this.card.id }
+    });
+
+    dialogRef.closed.subscribe((result: any) => {
+      if (result?.success) {
+        this.router.navigate(['/payment/success'], { state: { paymentDetails: result.details } });
+      }
+    });
+  }
+
+  onViewLocation() {
+    if (this.card.lat == null || this.card.lng == null) {
+      console.warn('El Motel no ha registrado su ubicacion en el mapa');
+      return;
+    }
+
+    this.viewLocation.emit({
+      lat: this.card.lat,
+      lng: this.card.lng,
+      name: this.card.roomType ?? this.card.motelName,
+      id: this.card.id,
+    });
+  }
+}
+```
+
+### Usage
+
+```html
+<!-- Room card with location event wired to map -->
+<app-card-3
+  [card]="roomCard"
+  (viewLocation)="onViewLocation($event)"
+/>
+
+<!-- Motel card -->
+<app-card-3
+  [card]="motelCard"
+  (viewLocation)="onViewLocation($event)"
+/>
+```
+
+---
+
+## Skeleton loading cards
+
+Two skeleton components mirror the visual shape of the real cards while data is loading. They have no inputs or outputs.
+
+| Selector | Class | Mirrors |
+|---|---|---|
+| `app-loading-card` | `LoadingCard` | `app-card` and `app-card-room` |
+| `app-loading-card-3` | `LoadingCard3` | `app-card-3` |
+
+```html
+<!-- Show skeletons while loading, then swap to real cards -->
+@if (loading) {
+  @for (i of [1,2,3]; track i) {
+    <app-loading-card />
+  }
+} @else {
+  @for (room of rooms; track room.id) {
+    <app-card [card]="room" />
+  }
+}
+```

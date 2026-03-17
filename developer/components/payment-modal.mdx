@@ -1,0 +1,301 @@
+---
+title: 'Payment modal component'
+description: 'Reference for the Stripe-integrated payment modal, including inputs, the reservation flow, and calendar date/time selection.'
+---
+
+Selector: `app-payment-modal`  
+File: `src/app/components/payment-modal/payment-modal.ts`
+
+The `PaymentModal` is an Angular CDK Dialog component that walks the user through booking a room. It combines a calendar date picker, time slot selection with real-time availability checking, and a Stripe Elements payment form.
+
+## Opening the modal
+
+The modal is never placed directly in a template. It is opened programmatically via Angular CDK's `Dialog` service, injecting a `data` object that carries the room ID:
+
+```typescript
+import { Dialog } from '@angular/cdk/dialog';
+import { PaymentModal } from './payment-modal/payment-modal';
+
+// Inject in constructor
+constructor(private dialog: Dialog, private router: Router) {}
+
+openPayment(roomId: number) {
+  const dialogRef = this.dialog.open(PaymentModal, {
+    data: { id: roomId }
+  });
+
+  dialogRef.closed.subscribe((result: any) => {
+    if (result?.success) {
+      this.router.navigate(['/payment/success'], {
+        state: { paymentDetails: result.details }
+      });
+    }
+  });
+}
+```
+
+<Info>
+`Button01` with `action="reservar"` also opens the modal directly — you do not need to wire it up manually when using that button component.
+</Info>
+
+## Dialog data
+
+The `data` object injected at open time:
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | `number` (required) | Room ID to load via `RoomService.getRoomById()` |
+| `date` | `string` (optional) | Pre-select a date in `YYYY-MM-DD` format |
+| `time` | `string` (optional) | Pre-select an entry time in `HH:mm` format |
+
+## Component class overview
+
+```typescript
+@Component({
+  selector: 'app-payment-modal',
+  standalone: true,
+  imports: [CommonModule],
+  templateUrl: './payment-modal.html',
+})
+export class PaymentModal implements OnInit {
+
+  room: Room | null = null;
+  loading = true;
+  error = false;
+
+  // Stripe state
+  stripe: Stripe | null = null;
+  elements: StripeElements | null = null;
+  clientSecret: string | null = null;
+  paymentId: number | null = null;
+  processingPayment = false;
+  paymentError: string | null = null;
+  paymentSuccess = false;
+  confirmationCode: string | null = null;
+
+  // Mobile wizard step (1 = date, 2 = time/price, 3 = Stripe)
+  mobileStep = 1;
+
+  // Calendar
+  calendarDays: CalendarDay[] = [];
+  selectedDay: CalendarDay | null = null;
+  calendarView: 'month' | 'week' = 'month';
+
+  // Time slots
+  entrySlots: TimeSlot[] = [];
+  exitSameDaySlots: TimeSlot[] = [];
+  exitNextDaySlots: TimeSlot[] = [];
+  startTime = '';
+  endTime = '';
+
+  // Availability
+  checkingAvailability = false;
+  availabilityOk: boolean | null = null;
+  reservations: RoomReservation[] = [];
+
+  constructor(
+    private dialogRef: DialogRef<any>,
+    @Inject(DIALOG_DATA) public data: { id?: number; date?: string; time?: string },
+    private roomService: RoomService,
+    private paymentService: PaymentService,
+    private auth: AuthService,
+    private router: Router,
+    private http: HttpClient,
+    private cdr: ChangeDetectorRef,
+  ) { }
+}
+```
+
+## Payment flow
+
+<Steps>
+  <Step title="Load room data">
+    `ngOnInit` calls `RoomService.getRoomById(data.id)`. On success, the room is stored in `this.room` and the calendar is built for the current month.
+  </Step>
+  <Step title="Initialize Stripe">
+    `initializeStripe()` calls `PaymentService.getStripeConfig()` to fetch the publishable key, then calls `loadStripe(publishableKey)` from `@stripe/stripe-js`.
+  </Step>
+  <Step title="Select date">
+    The user picks a date from the calendar (month or week view). Past dates are disabled. Selecting a date triggers `loadReservationsForDate()` to fetch existing confirmed/pending reservations for that date from `RoomService.getReservationsForDate()`.
+  </Step>
+  <Step title="Select time slots">
+    Entry slots (08:00–23:00) are shown. Slots that overlap with existing reservations or are in the past (today only) are marked unavailable. After choosing an entry time, exit slots for the same day are displayed. A second group of overnight exit slots (00:00–07:00) is shown for next-day checkout.
+  </Step>
+  <Step title="Verify availability">
+    Selecting an exit time automatically calls `RoomService.checkAvailability(roomId, date, startTime, endTime)`. If available and on mobile step 2, the wizard advances to step 3 after a 600 ms delay.
+  </Step>
+  <Step title="Create reservation">
+    `reserve()` validates the selection, checks authentication (redirects to `/login` if not logged in), then calls `PaymentService.createReservation()` with the room ID, motel ID, total price, check-in ISO string, and check-out ISO string.
+  </Step>
+  <Step title="Create payment intent">
+    On reservation success, `PaymentService.createPaymentIntent(reservationId, totalPrice)` is called. The returned `clientSecret` is stored and `mountStripeElements()` is called to inject the Stripe payment UI.
+  </Step>
+  <Step title="Mount Stripe Elements">
+    `mountStripeElements()` uses `requestAnimationFrame` and a retry loop (`tryMountStripe`) to ensure the `#payment-element-desktop` or `#payment-element-mobile` container is in the DOM before mounting. The Stripe Element is styled with the `night` theme and Ubik's red brand color (`#A72027`).
+  </Step>
+  <Step title="Confirm payment">
+    `confirmPayment()` calls `stripe.confirmPayment()` with `redirect: 'if_required'`. On success, `paymentSuccess` is set to `true` and after 2 seconds the dialog closes with `{ success: true, paymentId, details }`.
+  </Step>
+</Steps>
+
+## Key methods
+
+```typescript
+// Called when the user clicks "Continuar al Pago" / "Pagar $X COP"
+reserve(): void {
+  if (!this.canReserve || !this.room) return;
+
+  if (!this.auth.isLogged()) {
+    this.dialogRef.close();
+    this.router.navigate(['/login']);
+    return;
+  }
+
+  // Build check-in/check-out DateTime objects
+  const dateTimes = this.buildCheckInOutDateTimes();
+  if (!dateTimes) return;
+
+  this.reserving = true;
+
+  this.paymentService.createReservation(
+    this.room.id,
+    this.room.motelId,
+    this.totalPrice,
+    101, // userId
+    dateTimes.checkInIso,
+    dateTimes.checkOutIso,
+  ).subscribe({
+    next: (res: any) => {
+      // Once reservation is created, get a Stripe Payment Intent
+      this.paymentService.createPaymentIntent(res.id, this.totalPrice).subscribe({
+        next: (intentRes) => {
+          this.clientSecret = intentRes.clientSecret;
+          this.paymentId = intentRes.paymentId;
+          this.mobileStep = 3;
+          this.mountStripeElements();
+        }
+      });
+    }
+  });
+}
+
+// Called when the user clicks "Confirmar Pago"
+async confirmPayment(): Promise<void> {
+  if (!this.stripe || !this.elements) return;
+
+  this.processingPayment = true;
+
+  const { error } = await this.stripe.confirmPayment({
+    elements: this.elements,
+    confirmParams: {
+      return_url: window.location.origin + '/reservations/success',
+    },
+    redirect: 'if_required'
+  });
+
+  if (error) {
+    this.paymentError = error.message || 'El pago fue rechazado o cancelado.';
+    this.processingPayment = false;
+  } else {
+    this.paymentSuccess = true;
+    setTimeout(() => {
+      this.dialogRef.close({
+        success: true,
+        paymentId: this.paymentId,
+        details: {
+          date: this.selectedDate!.toISOString().split('T')[0],
+          startTime: this.startTime,
+          endTime: this.endTime,
+          totalPrice: this.totalPrice,
+          roomName: this.room?.roomType || this.room?.motelName,
+          confirmationCode: this.confirmationCode
+        }
+      });
+    }, 2000);
+  }
+}
+```
+
+## Computed getters
+
+| Getter | Returns | Description |
+|---|---|---|
+| `totalHours` | `number` | Hours between start and end time. Handles midnight crossover. |
+| `totalPrice` | `number` | `room.price * totalHours` |
+| `canReserve` | `boolean` | `true` when date, start time, end time, and availability are all valid |
+| `crossesMidnight` | `boolean` | `true` when end hour ≤ start hour (overnight booking) |
+| `selectedDateLabel` | `string` | Localized date string in `es-CO` locale |
+| `currentMonthLabel` | `string` | Month and year label for the calendar header |
+
+## Available time slots
+
+```typescript
+readonly ALL_SLOTS = [
+  '08:00', '09:00', '10:00', '11:00', '12:00',
+  '13:00', '14:00', '15:00', '16:00', '17:00',
+  '18:00', '19:00', '20:00', '21:00', '22:00', '23:00',
+];
+
+// Overnight exit slots
+exitNextDaySlots = [
+  '00:00', '01:00', '02:00', '03:00',
+  '04:00', '05:00', '06:00', '07:00',
+];
+```
+
+## Stripe Elements appearance
+
+The Stripe UI is mounted with the `night` theme and Ubik's brand tokens:
+
+```typescript
+this.elements = this.stripe!.elements({
+  clientSecret: this.clientSecret!,
+  appearance: {
+    theme: 'night',
+    variables: {
+      colorPrimary: '#A72027',
+      colorBackground: '#1a1a1f',
+      colorText: '#ffffff',
+      colorDanger: '#ff4d4f',
+      fontFamily: 'DM Sans, sans-serif',
+      borderRadius: '8px',
+    }
+  }
+});
+
+const paymentElement = this.elements.create('payment');
+paymentElement.mount(`#${container.id}`);
+```
+
+## Services used
+
+| Service | Method | Purpose |
+|---|---|---|
+| `RoomService` | `getRoomById(id)` | Fetch room details on open |
+| `RoomService` | `getReservationsForDate(roomId, dateStr)` | Fetch existing reservations for the selected date |
+| `RoomService` | `checkAvailability(roomId, date, startTime, endTime)` | Verify the chosen slot is free |
+| `PaymentService` | `getStripeConfig()` | Retrieve the Stripe publishable key |
+| `PaymentService` | `createReservation(...)` | Create the reservation record in the backend |
+| `PaymentService` | `createPaymentIntent(reservationId, amount)` | Create a Stripe PaymentIntent |
+| `AuthService` | `isLogged()` | Guard the reserve action; redirect to login if unauthenticated |
+
+## Close result shape
+
+When the payment succeeds the dialog closes with:
+
+```typescript
+{
+  success: true,
+  paymentId: number,
+  details: {
+    date: string;          // 'YYYY-MM-DD'
+    startTime: string;     // 'HH:mm'
+    endTime: string;       // 'HH:mm'
+    totalPrice: number;
+    roomName: string | undefined;
+    confirmationCode: string | null;
+  }
+}
+```
+
+When the user cancels (clicks "Cancelar" or closes the dialog), `dialogRef.close()` is called with no argument and the `closed` observable emits `undefined`.

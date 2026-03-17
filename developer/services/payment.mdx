@@ -1,0 +1,191 @@
+---
+title: 'Payment Service'
+description: 'End-to-end payment flow using Stripe: reservation creation, Stripe configuration, payment intent, and client-side confirmation.'
+---
+
+`PaymentService` orchestrates the full booking payment flow: creating the reservation record in the Ubik backend, fetching the Stripe publishable key, creating a Stripe Payment Intent, and returning the `clientSecret` for client-side confirmation with Stripe.js.
+
+## TypeScript interfaces
+
+```typescript payment.service.ts
+export interface StripeConfig {
+  publishableKey: string;
+}
+
+export interface CreatePaymentResponse {
+  paymentId:    number;
+  clientSecret: string;
+}
+```
+
+## Reservation model
+
+```typescript reservation.model.ts
+export interface Reservation {
+  id:               number;
+  motel_id:         number;
+  room_id:          number;
+  user_id:          number;
+  total_price:      number;
+  start_date:       Date;
+  end_date:         Date;
+  status:           'pending' | 'confirmed' | 'cancelled';
+  special_requests: string;
+  created_at:       Date;
+  updated_at:       Date;
+}
+```
+
+---
+
+## API endpoints
+
+| Method | Path | Request body | Response |
+|--------|------|-------------|----------|
+| `POST` | `/api/reservations` | `{ roomId, motelId, totalPrice, userId, checkInDate, checkOutDate }` | `{ id: number, confirmationCode?: string }` |
+| `GET` | `/api/payments/config` | — | `StripeConfig` |
+| `POST` | `/api/payments/create-intent` | `{ reservationId, amountCop }` | `CreatePaymentResponse` |
+
+---
+
+## PaymentService methods
+
+### `createReservation()`
+
+Creates the reservation record and returns its ID (and optional confirmation code).
+
+```typescript payment.service.ts
+createReservation(
+  roomId:       number,
+  motelId:      number,
+  totalPrice:   number,
+  userId:       number,
+  checkInDate:  string,  // ISO date string: "YYYY-MM-DD"
+  checkOutDate: string,  // ISO date string: "YYYY-MM-DD"
+): Observable<{ id: number; confirmationCode?: string }> {
+  return this.http.post<{ id: number; confirmationCode?: string }>(
+    this.RESERVATION_URL,
+    { roomId, motelId, totalPrice, userId, checkInDate, checkOutDate },
+  );
+}
+```
+
+### `getStripeConfig()`
+
+Fetches the Stripe publishable key from the backend. This keeps the key out of the Angular bundle.
+
+```typescript payment.service.ts
+getStripeConfig(): Observable<StripeConfig> {
+  return this.http.get<StripeConfig>(`${this.API_URL}/config`);
+}
+```
+
+### `createPaymentIntent()`
+
+Creates a Stripe Payment Intent on the backend and returns the `clientSecret` needed to confirm the payment on the client.
+
+```typescript payment.service.ts
+createPaymentIntent(
+  reservationId: number,
+  amountCop:     number,   // amount in Colombian pesos (COP)
+): Observable<CreatePaymentResponse> {
+  return this.http.post<CreatePaymentResponse>(
+    `${this.API_URL}/create-intent`,
+    { reservationId, amountCop },
+  );
+}
+```
+
+---
+
+## Full payment flow
+
+<Steps>
+  <Step title="Create the reservation">
+    Call `createReservation()` with the room, motel, user IDs, price, and date range. The backend creates a `Reservation` record with `status: 'pending'` and returns its ID.
+
+    ```typescript
+    const reservation = await firstValueFrom(
+      paymentService.createReservation(
+        roomId, motelId, totalPrice, userId, checkInDate, checkOutDate
+      )
+    );
+    const reservationId = reservation.id;
+    ```
+  </Step>
+  <Step title="Fetch the Stripe publishable key">
+    Call `getStripeConfig()` to retrieve the publishable key. Use it to initialize Stripe.js.
+
+    ```typescript
+    const { publishableKey } = await firstValueFrom(
+      paymentService.getStripeConfig()
+    );
+    const stripe = await loadStripe(publishableKey);
+    ```
+  </Step>
+  <Step title="Create a payment intent">
+    Call `createPaymentIntent()` with the reservation ID and the total amount in COP. The backend creates a Stripe Payment Intent and returns the `clientSecret`.
+
+    ```typescript
+    const { clientSecret } = await firstValueFrom(
+      paymentService.createPaymentIntent(reservationId, amountCop)
+    );
+    ```
+  </Step>
+  <Step title="Confirm payment with Stripe.js">
+    Use the `clientSecret` with the Stripe.js `confirmPayment()` method to collect card details and confirm the payment in the browser.
+
+    ```typescript
+    const { error } = await stripe.confirmPayment({
+      elements,
+      confirmParams: {
+        return_url: `${window.location.origin}/payment-success`,
+      },
+    });
+    ```
+  </Step>
+  <Step title="Handle success or failure">
+    On success, Stripe redirects to the `return_url`. On failure, the error object is non-null — the app routes the user to `/payment-failure`.
+  </Step>
+</Steps>
+
+---
+
+## Error handling
+
+### Payment failures
+
+When `stripe.confirmPayment()` returns an `error` object, the payment component navigates to the `/payment-failure` route. Common error types from Stripe:
+
+| Error type | Cause |
+|------------|-------|
+| `card_error` | Card declined, insufficient funds, or incorrect CVC |
+| `validation_error` | Incomplete card fields |
+| `api_error` | Stripe API issue; retry is appropriate |
+| `invalid_request_error` | Malformed payment intent (e.g. zero amount) |
+
+### Backend errors
+
+`createReservation()` and `createPaymentIntent()` return Angular `HttpErrorResponse` objects on failure. Wrap calls in a `catchError` or `try/catch` (when using `firstValueFrom`) to handle HTTP 4xx/5xx responses before proceeding to the next step.
+
+```typescript
+try {
+  const reservation = await firstValueFrom(
+    paymentService.createReservation(...)
+  );
+} catch (err: any) {
+  if (err.status === 409) {
+    // Room already reserved for this period
+  } else {
+    // Generic error — show user feedback
+  }
+}
+```
+
+<Warning>
+Always create the reservation record before creating the payment intent. The `reservationId` returned by `createReservation()` is a required parameter for `createPaymentIntent()`.
+</Warning>
+
+<Note>
+`amountCop` is passed in full Colombian pesos (not centavos). The backend is responsible for converting to the unit amount expected by the Stripe API.
+</Note>
